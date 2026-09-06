@@ -1,25 +1,28 @@
-// ============================================
-// STEALTH R&D — PIN GATE MIDDLEWARE
-// Version: 1.0.0
-// Updated: 2026-09-06
-// Pairs with: login.html v1.0.0, api/login.js v1.0.0
-// ============================================
-// Gates the whole site behind a PIN.
-// Anything not matched below requires a valid session cookie.
+import { next } from '@vercel/edge';
+
+// Runs on every request that matches `config.matcher` below.
+// Checks for a valid session cookie; if missing/wrong, bounces to /login.
+// Uses plain Web Request/Response APIs — no 'next/server' import, so this
+// works on a static project with no framework installed.
 
 export const config = {
-  matcher: ['/((?!login|api/login|_vercel|favicon.ico).*)']
+  // Everything EXCEPT: /login itself, /api/login (the endpoint that sets
+  // the cookie), and static assets (logo, favicon). Without these
+  // exclusions the login page would redirect to itself in an infinite loop.
+  matcher: ['/((?!login$|api/login$|logo\\.png$|favicon\\.ico$).*)'],
 };
 
 export default function middleware(request) {
-  const cookie = request.headers.get('cookie') || '';
-  const match = cookie.match(/(?:^|;\s*)srnd=([^;]+)/);
+  const cookieHeader = request.headers.get('cookie') || '';
+  const match = cookieHeader.match(/(?:^|;\s*)shop_session=([^;]+)/);
   const token = match ? decodeURIComponent(match[1]) : null;
 
-  if (token && token === process.env.SITE_TOKEN) {
-    return; // let the request through
+  const expected = process.env.SITE_TOKEN;
+
+  if (!expected || token !== expected) {
+    const loginUrl = new URL('/login', request.url);
+    return Response.redirect(loginUrl, 302);
   }
 
-  const url = new URL(request.url);
-  return Response.redirect(new URL('/login', url.origin), 307);
+  return next();
 }
