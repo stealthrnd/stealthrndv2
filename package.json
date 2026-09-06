@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "dependencies": {
-    "@vercel/blob": "latest",
+    "@vercel/blob": "2.6.1",
     "@vercel/functions": "^1.5.0"
   }
 }
