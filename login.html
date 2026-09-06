@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Stealth R&D — Login</title>
+<style>
+  :root{
+    --field:#34343a;
+    --ink:#83858e;
+    --accent:#9233E6;
+    --silver:#CCCCCC;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; width:100%;
+    background:var(--field);
+    font-family:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+    overflow:hidden;
+  }
+  #bg{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  .wrap{
+    position:relative; z-index:2;
+    height:100%; width:100%;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+  }
+  .brand{
+    font-size:16px; letter-spacing:0.36em; font-weight:500;
+    color:var(--silver);
+    text-shadow:0 2px 18px rgba(0,0,0,.9);
+  }
+  .sub{
+    margin-top:12px; font-size:13px; letter-spacing:0.03em;
+    color:#9a9aa0;
+    text-shadow:0 2px 14px rgba(0,0,0,.9);
+  }
+  .dots{
+    display:flex; justify-content:center; gap:11px;
+    margin:20px 0 30px; height:11px;
+  }
+  .dot{
+    width:9px; height:9px; border-radius:50%;
+    background:rgba(255,255,255,0.10);
+    box-shadow:0 1px 6px rgba(0,0,0,.6);
+    transition: background .12s ease, transform .12s ease;
+  }
+  .dot.filled{ background:var(--accent); transform:scale(1.12); box-shadow:0 0 10px rgba(146,51,230,.7); }
+  .dot.error{ background:#c0392b; box-shadow:none; }
+
+  .pad{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:7px;
+    width:228px;
+    padding:9px;
+    border-radius:14px;
+    background:rgba(26,26,30,0.26);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    border:1px solid rgba(255,255,255,0.045);
+  }
+  .key{
+    position:relative;
+    height:45px;
+    border-radius:9px;
+    border:1px solid rgba(255,255,255,0.07);
+    background:rgba(255,255,255,0.025);
+    color:#d2d2d6;
+    font-size:16px; font-family:inherit; font-weight:500;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    user-select:none;
+    transition: background .28s ease, box-shadow .28s ease,
+                border-color .28s ease, color .28s ease;
+  }
+  .key:hover{ background:rgba(255,255,255,0.05); }
+  .key.ghost{ background:transparent; border-color:rgba(255,255,255,0.03); color:#6a6a70; }
+
+  /* vibrant, fast full-button flash */
+  .key.flash{
+    background:var(--accent);
+    border-color:#b061ff;
+    color:#ffffff;
+    box-shadow:0 0 22px rgba(146,51,230,.85), 0 0 46px rgba(146,51,230,.45);
+    transition: background .04s linear, box-shadow .04s linear,
+                border-color .04s linear, color .04s linear;
+  }
+
+  .shake{ animation:shakex .35s ease; }
+  @keyframes shakex{
+    0%,100%{ transform:translateX(0); }
+    20%{ transform:translateX(-7px); }
+    40%{ transform:translateX(6px); }
+    60%{ transform:translateX(-4px); }
+    80%{ transform:translateX(3px); }
+  }
+  .status{
+    margin-top:14px; min-height:15px;
+    font-size:11px; letter-spacing:.05em; color:#c0392b;
+    opacity:0; transition:opacity .2s ease;
+    text-shadow:0 1px 8px rgba(0,0,0,.9);
+  }
+  .status.show{ opacity:1; }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div class="wrap" id="wrap">
+  <div class="brand">STEALTH R&amp;D</div>
+  <div class="sub">Enter shop pin</div>
+  <div class="dots" id="dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div>
+  </div>
+  <div class="pad" id="pad">
+    <button class="key" data-k="1">1</button>
+    <button class="key" data-k="2">2</button>
+    <button class="key" data-k="3">3</button>
+    <button class="key" data-k="4">4</button>
+    <button class="key" data-k="5">5</button>
+    <button class="key" data-k="6">6</button>
+    <button class="key" data-k="7">7</button>
+    <button class="key" data-k="8">8</button>
+    <button class="key" data-k="9">9</button>
+    <button class="key ghost" data-k="clear">C</button>
+    <button class="key" data-k="0">0</button>
+    <button class="key ghost" data-k="back">&#9003;</button>
+  </div>
+  <div class="status" id="status">Wrong PIN</div>
+</div>
+
+<script>
+/* ============ FLOATING DITHERED PARTS ============ */
+(function(){
+  var canvas = document.getElementById('bg');
+  var ctx = canvas.getContext('2d');
+  var INK = '#83858e';
+  var ACCENT = '#9233E6';
+  var FIELD = '#34343a';
+  var PX = 2;
+
+  var bayer = [
+    [ 0,32, 8,40, 2,34,10,42],
+    [48,16,56,24,50,18,58,26],
+    [12,44, 4,36,14,46, 6,38],
+    [60,28,52,20,62,30,54,22],
+    [ 3,35,11,43, 1,33, 9,41],
+    [51,19,59,27,49,17,57,25],
+    [15,47, 7,39,13,45, 5,37],
+    [63,31,55,23,61,29,53,21]
+  ];
+
+  function rr(c,x,y,w,h,r){
+    if(c.roundRect){ c.roundRect(x,y,w,h,r); return; }
+    r = Math.min(r, w/2, h/2);
+    c.moveTo(x+r,y);
+    c.arcTo(x+w,y,x+w,y+h,r);
+    c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r);
+    c.arcTo(x,y,x+w,y,r);
+    c.closePath();
+  }
+
+  var SHAPES = [
+    function(c){ c.beginPath();
+      rr(c,-52,-6,74,12,2); rr(c,22,-3.5,34,7,2);
+      c.rect(30,-6,3,5); c.rect(38,-6,3,5); rr(c,-14,6,12,15,2);
+      c.moveTo(-2,7); c.quadraticCurveTo(16,16,10,40); c.lineTo(-2,40); c.quadraticCurveTo(4,16,-12,8); c.closePath();
+      c.moveTo(-30,6); c.lineTo(-18,6); c.lineTo(-24,28); c.lineTo(-36,28); c.closePath();
+      rr(c,-74,-8,24,16,3); c.rect(-56,-2,8,4);
+      for(var i=26;i<52;i+=6){ c.rect(i,-7,2,4); }
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-48,-5,70,10,2); rr(c,20,-4,36,8,3); rr(c,-6,6,26,9,3);
+      for(var i=-4;i<18;i+=4){ c.rect(i,7,2,7); }
+      rr(c,-72,-9,26,18,4);
+      c.moveTo(-30,5); c.lineTo(-18,5); c.lineTo(-22,24); c.lineTo(-34,24); c.closePath();
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-46,-5,66,10,2); rr(c,18,-3,40,6,2);
+      c.moveTo(-20,5); c.quadraticCurveTo(-6,26,-26,26); c.quadraticCurveTo(-16,16,-24,5); c.closePath();
+      rr(c,-70,-8,26,16,4); c.rect(24,-6,3,4); c.rect(46,-6,3,4);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-46,-4,72,9,2); rr(c,24,-3,42,6,2); rr(c,-24,-18,44,11,5);
+      rr(c,-30,-20,8,15,3); rr(c,18,-20,8,15,3); c.rect(-6,-9,4,5);
+      rr(c,-72,-7,28,15,4);
+      c.moveTo(-28,5); c.lineTo(-16,5); c.lineTo(-20,24); c.lineTo(-32,24); c.closePath();
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-48,-6,70,12,2); rr(c,22,-3.5,38,7,2); rr(c,48,-6,10,12,2);
+      c.moveTo(-8,6); c.quadraticCurveTo(14,20,6,44); c.lineTo(-10,44); c.quadraticCurveTo(-2,20,-18,7); c.closePath();
+      c.moveTo(-32,6); c.lineTo(-20,6); c.lineTo(-26,26); c.lineTo(-38,26); c.closePath();
+      rr(c,-74,-7,26,14,3); c.rect(4,-10,20,5);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-30,-9,54,15,2);
+      for(var i=-28;i<-8;i+=4){ c.rect(i,-8,2,13); }
+      rr(c,18,-6,10,10,2);
+      c.moveTo(-14,6); c.lineTo(4,6); c.lineTo(0,40); c.lineTo(-22,40); c.closePath();
+      c.rect(-10,10,10,26);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-42,-9,84,18,9);
+      for(var i=-34;i<34;i+=7){ c.rect(i,-9,3,18); }
+      rr(c,38,-5,10,10,3);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-34,-11,68,22,10); rr(c,-44,-14,12,28,5); rr(c,32,-14,12,28,5);
+      c.rect(-10,-14,8,28); c.rect(6,-14,5,28); rr(c,-4,-22,12,10,3);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-20,-18,40,36,6);
+      c.moveTo(12,-2); c.arc(0,-2,12,0,Math.PI*2);
+      c.rect(-20,12,40,7);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(26,4); c.arc(0,4,26,0,Math.PI*2);
+      c.moveTo(11,4); c.arc(0,4,11,0,Math.PI*2);
+      c.rect(-8,-30,16,16);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(-12,-26); c.quadraticCurveTo(20,-2,12,44); c.lineTo(-6,44); c.quadraticCurveTo(2,0,-24,-26); c.closePath();
+      for(var i=-16;i<36;i+=8){ c.rect(-8,i,16,3); }
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-9,-24,18,14,3); rr(c,-7,-10,14,38,6);
+      for(var i=-4;i<24;i+=6){ c.rect(-7,i,14,2); }
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-38,-11,76,22,4); rr(c,26,-8,18,16,7);
+      c.moveTo(39,0); c.arc(34,0,5,0,Math.PI*2);
+      c.rect(-20,-14,10,6);
+      for(var i=-32;i<-4;i+=6){ c.rect(i,-11,3,22); }
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-46,-8,92,16,2);
+      for(var i=-42;i<42;i+=8){ c.rect(i,-12,4,8); }
+      for(var j=-38;j<38;j+=12){ c.rect(j,2,6,4); }
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-9,-30,18,44,3); rr(c,-10,14,20,14,2);
+      c.rect(-10,18,20,2); c.rect(-10,23,20,2);
+      c.moveTo(3,24); c.arc(0,24,3,0,Math.PI*2);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(-46,6); c.lineTo(28,-10); c.quadraticCurveTo(44,-8,40,6); c.lineTo(-44,16); c.closePath();
+      rr(c,-60,4,18,12,3);
+      c.moveTo(-54,8); c.arc(-56,8,2,0,Math.PI*2);
+      c.moveTo(-46,8); c.arc(-48,8,2,0,Math.PI*2);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(-34,4); c.lineTo(22,-6); c.lineTo(40,-16); c.lineTo(30,4); c.lineTo(-32,12); c.closePath();
+      c.rect(-46,0,14,12); rr(c,-64,2,20,10,3);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(-30,2); c.lineTo(20,-6); c.lineTo(34,-2); c.lineTo(26,6); c.lineTo(-28,10); c.closePath();
+      rr(c,-52,0,22,10,2);
+      for(var i=-48;i<-32;i+=5){ c.rect(i,0,2,10); }
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(-38,0); c.quadraticCurveTo(-4,-14,22,4); c.quadraticCurveTo(30,14,16,18); c.quadraticCurveTo(-6,4,-36,10); c.closePath();
+      rr(c,-56,-2,20,12,3);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.arc(2,0,22,0.25,3.5); c.arc(2,0,13,3.5,0.25,true); c.closePath();
+      c.moveTo(-15,4); c.arc(-22,4,7,0,Math.PI*2);
+      c.moveTo(-18.5,4); c.arc(-22,4,3.5,0,Math.PI*2);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(-6,-4); c.lineTo(34,-10); c.lineTo(42,-4); c.lineTo(32,2); c.lineTo(-6,4); c.closePath();
+      rr(c,-46,-10,40,7,2); rr(c,-46,3,40,7,2);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      rr(c,-26,-16,52,30,2);
+      c.moveTo(20,-10); c.arc(16,-10,4,0,Math.PI*2);
+      rr(c,26,-6,26,10,3);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(0,-40); c.lineTo(6,-6); c.lineTo(6,4); c.lineTo(-6,4); c.lineTo(-6,-6); c.closePath();
+      c.rect(-14,4,28,5); rr(c,-7,9,14,26,3);
+      c.fill('evenodd'); },
+    function(c){ c.beginPath();
+      c.moveTo(-34,-14); c.lineTo(24,-8); c.lineTo(32,14); c.lineTo(-26,20); c.lineTo(-34,12); c.closePath();
+      rr(c,-30,-6,10,16,2);
+      c.fill('evenodd'); }
+  ];
+
+  var W=0,H=0,parts=[];
+  var dpr = Math.min(window.devicePixelRatio||1, 2);
+  var pad = 130; // off-screen margin for wrap-around
+
+  // Pre-dither one part into a local dot list (centered on its own origin).
+  function bakePart(shapeFn, scale){
+    var size = Math.ceil(230*scale);
+    var cv = document.createElement('canvas');
+    cv.width = Math.ceil(size/PX); cv.height = Math.ceil(size/PX);
+    var c2 = cv.getContext('2d');
+    c2.save();
+    c2.scale(1/PX,1/PX);
+    c2.translate(size/2, size/2);
+    c2.scale(scale, scale);
+    c2.fillStyle = '#fff';
+    shapeFn(c2);
+    c2.restore();
+
+    var img = c2.getImageData(0,0,cv.width,cv.height).data;
+
+    // 1-3 purple blooms in the part's own space, so accent lands in
+    // patches across a piece rather than tinting whole objects.
+    var blooms = [];
+    var nb = 1 + ((Math.random()*3)|0);
+    for(var b=0;b<nb;b++){
+      blooms.push({
+        bx:(Math.random()-0.5)*size*0.7,
+        by:(Math.random()-0.5)*size*0.7,
+        br:(24 + Math.random()*60)*scale
+      });
+    }
+
+    var out = [];
+    for(var y=0;y<cv.height;y++){
+      for(var x=0;x<cv.width;x++){
+        var p = (y*cv.width+x)*4;
+        if(img[p+3] < 12) continue;
+        var v = img[p] * (img[p+3]/255);
+        // Bayer on the object's own grid: dots travel with the part.
+        if(v > (bayer[y&7][x&7]/64)*255 * 0.5){
+          var lx = (x*PX) - size/2, ly = (y*PX) - size/2;
+          var pur = 0;
+          for(var k=0;k<blooms.length;k++){
+            var bl = blooms[k];
+            var dx = lx-bl.bx, dy = ly-bl.by;
+            var dist = Math.sqrt(dx*dx+dy*dy);
+            if(dist < bl.br){
+              // soft edge: likelier purple toward the bloom centre
+              if(Math.random() < 1 - (dist/bl.br)*0.75){ pur = 1; break; }
+            }
+          }
+          out.push(lx, ly, pur);
+        }
+      }
+    }
+    return new Float32Array(out);
+  }
+
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W*dpr; canvas.height = H*dpr;
+    canvas.style.width = W+'px'; canvas.style.height = H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    build();
+  }
+
+  function build(){
+    // Fewer, larger parts -> objects read clearly instead of becoming texture.
+    var count = Math.max(9, Math.min(20, Math.round((W*H)/78000)));
+    parts = [];
+    for(var i=0;i<count;i++){
+      var scale = 0.85 + Math.random()*0.95;
+      var shape = SHAPES[(Math.random()*SHAPES.length)|0];
+      parts.push({
+        dots: bakePart(shape, scale),
+        x: Math.random()*(W+pad*2) - pad,
+        y: Math.random()*(H+pad*2) - pad,
+        rot: Math.random()*Math.PI*2,
+        vr: (Math.random()-0.5)*0.055,          // slow spin, rad/sec
+        vx: (Math.random()-0.5)*7,              // slow drift, px/sec
+        vy: (Math.random()-0.5)*7,
+        alpha: 0.34 + Math.random()*0.32        // softer, varied depth
+      });
+    }
+  }
+
+  var last = 0, fade = 0;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function frame(now){
+    var dt = last ? Math.min(0.05,(now-last)/1000) : 0;
+    last = now;
+    if(fade < 1) fade = Math.min(1, fade + dt/0.9);
+
+    ctx.fillStyle = FIELD;
+    ctx.fillRect(0,0,W,H);
+
+    for(var i=0;i<parts.length;i++){
+      var p = parts[i];
+      if(!reduceMotion){
+        p.rot += p.vr*dt;
+        p.x += p.vx*dt;
+        p.y += p.vy*dt;
+        if(p.x < -pad) p.x = W+pad; else if(p.x > W+pad) p.x = -pad;
+        if(p.y < -pad) p.y = H+pad; else if(p.y > H+pad) p.y = -pad;
+      }
+      var cos = Math.cos(p.rot), sin = Math.sin(p.rot);
+      var d = p.dots;
+
+      // two passes so fillStyle only changes twice per part
+      ctx.fillStyle = INK;
+      ctx.globalAlpha = p.alpha * fade;
+      for(var j=0;j<d.length;j+=3){
+        if(d[j+2]) continue;
+        var lx = d[j], ly = d[j+1];
+        ctx.fillRect(
+          (p.x + lx*cos - ly*sin)|0,
+          (p.y + lx*sin + ly*cos)|0,
+          PX, PX
+        );
+      }
+
+      ctx.fillStyle = ACCENT;
+      ctx.globalAlpha = Math.min(1, p.alpha*1.5) * fade;
+      for(var m=0;m<d.length;m+=3){
+        if(!d[m+2]) continue;
+        var ax = d[m], ay = d[m+1];
+        ctx.fillRect(
+          (p.x + ax*cos - ay*sin)|0,
+          (p.y + ax*sin + ay*cos)|0,
+          PX, PX
+        );
+      }
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(frame);
+  }
+
+  var rt;
+  window.addEventListener('resize', function(){
+    clearTimeout(rt);
+    rt = setTimeout(resize, 160);
+  });
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+
+/* ============ PIN KEYPAD ============ */
+(function(){
+  var dotsEl = document.getElementById('dots').children;
+  var pad = document.getElementById('pad');
+  var wrap = document.getElementById('wrap');
+  var statusEl = document.getElementById('status');
+  var PIN_LEN = 5;
+  var entered = '';
+
+  function renderDots(err){
+    for(var i=0;i<PIN_LEN;i++){
+      dotsEl[i].classList.toggle('filled', i < entered.length && !err);
+      dotsEl[i].classList.toggle('error', !!err);
+    }
+  }
+
+  function flash(btn){
+    btn.classList.remove('flash');
+    void btn.offsetWidth;          // restart the transition
+    btn.classList.add('flash');
+    setTimeout(function(){ btn.classList.remove('flash'); }, 70);
+  }
+
+  function submitPin(){
+    fetch('/api/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pin: entered })
+    }).then(function(res){
+      if(res.ok){ window.location.href = '/terminal'; }
+      else { fail(); }
+    }).catch(fail);
+  }
+
+  function fail(){
+    renderDots(true);
+    wrap.classList.add('shake');
+    statusEl.classList.add('show');
+    setTimeout(function(){
+      wrap.classList.remove('shake');
+      entered=''; renderDots(false);
+      statusEl.classList.remove('show');
+    }, 650);
+  }
+
+  function push(k){
+    if(entered.length < PIN_LEN){
+      entered += k; renderDots(false);
+      if(entered.length === PIN_LEN) setTimeout(submitPin, 150);
+    }
+  }
+
+  pad.addEventListener('click', function(e){
+    var btn = e.target.closest('.key');
+    if(!btn) return;
+    flash(btn);
+    var k = btn.dataset.k;
+    if(k === 'clear'){ entered=''; renderDots(false); return; }
+    if(k === 'back'){ entered = entered.slice(0,-1); renderDots(false); return; }
+    push(k);
+  });
+
+  window.addEventListener('keydown', function(e){
+    var btn = pad.querySelector('.key[data-k="'+e.key+'"]');
+    if(/^[0-9]$/.test(e.key)){ if(btn) flash(btn); push(e.key); }
+    else if(e.key === 'Backspace'){
+      var b = pad.querySelector('.key[data-k="back"]');
+      if(b) flash(b);
+      entered = entered.slice(0,-1); renderDots(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>
