@@ -1,0 +1,434 @@
+<meta charset="utf-8">
+<!-- TERMINAL.HTML — version set in <script> below as APP_VERSION. Bump there; badge updates automatically. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after{box-sizing:border-box}
+  :root{
+    --purple:#9233E6; --purple-lift:#A855F7; --purple-deep:#6B21C4;
+    --purple-glow:rgba(146,51,230,.13); --purple-tint:rgba(146,51,230,.11);
+    --silver:#CCCCCC;
+    --bg:#232327; --panel:#2C2C31; --raised:#35353B; --sunken:#060606;
+    --line:#43434B; --line-hot:#54545E;
+    --ink:#F4F4F6; --dim:#A6A6B2; --faint:#7C7C88;
+    --pass:#4ADE80; --warn:#F0B429; --fail:#F87171;
+    --pass-tint:rgba(74,222,128,.11); --warn-tint:rgba(240,180,41,.11); --fail-tint:rgba(248,113,113,.11);
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --disp:'Barlow Condensed','Oswald',system-ui,sans-serif;
+  }
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:13px}
+
+  .term{display:grid;grid-template-columns:132px 1fr;grid-template-rows:52px 1fr;
+        height:100vh;min-height:600px}
+
+  /* ---------- status strip ---------- */
+  .strip{grid-column:1/-1;background:var(--panel);border-bottom:1px solid var(--line);
+         display:flex;align-items:center;gap:20px;padding:0 18px}
+  .brand{font-family:var(--disp);font-size:19px;font-weight:700;letter-spacing:.16em;
+         text-transform:uppercase;color:var(--silver);white-space:nowrap}
+  .brand span{color:var(--purple-lift)}
+  .ver{font-size:9px;letter-spacing:.14em;color:var(--faint);border:1px solid var(--line);border-radius:2px;padding:2px 6px;text-transform:uppercase}
+  .strip-sep{width:1px;height:22px;background:var(--line)}
+  .strip-item{font-size:11px;color:var(--dim);letter-spacing:.06em;white-space:nowrap}
+  .strip-item b{color:var(--ink);font-weight:500}
+  .strip-right{margin-left:auto;display:flex;align-items:center;gap:16px}
+  .livepill{display:flex;align-items:center;gap:7px;background:var(--pass-tint);
+            border:1px solid rgba(74,222,128,.35);border-radius:2px;padding:5px 10px}
+  .livepill .d{width:6px;height:6px;border-radius:50%;background:var(--pass)}
+  @keyframes bp{0%,100%{opacity:1}50%{opacity:.3}}
+  .livepill .d{animation:bp 1.8s ease-in-out infinite}
+  .livepill .t{font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.13em;
+               text-transform:uppercase;color:var(--pass)}
+  .clockstrip{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:.04em}
+
+  /* feed state — makes a silent /api/data failure visible instead of stale-looking */
+  .feed{font-family:var(--disp);font-size:11px;font-weight:600;letter-spacing:.13em;
+        text-transform:uppercase;border:1px solid var(--line);border-radius:2px;
+        padding:4px 9px;color:var(--faint);white-space:nowrap}
+  .feed[data-s="ok"]{color:var(--pass);border-color:rgba(74,222,128,.35);background:var(--pass-tint)}
+  .feed[data-s="stale"]{color:var(--warn);border-color:rgba(240,180,41,.35);background:var(--warn-tint)}
+  .feed[data-s="down"]{color:var(--fail);border-color:rgba(248,113,113,.35);background:var(--fail-tint)}
+  .livepill[data-s="idle"]{background:none;border-color:var(--line)}
+  .livepill[data-s="idle"] .d{background:var(--faint);animation:none}
+  .livepill[data-s="idle"] .t{color:var(--dim)}
+
+  .empty{font-size:11px;color:var(--faint);letter-spacing:.04em;padding:11px 16px;
+         border-left:3px solid var(--line);background:var(--panel);border-radius:2px;margin-bottom:9px}
+
+  /* ---------- station rail ---------- */
+  .rail{background:var(--panel);border-right:1px solid var(--line);padding:14px 0;overflow-y:auto}
+  .rail-lbl{font-family:var(--disp);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+            color:var(--faint);padding:0 16px 9px}
+  .st{display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
+      padding:12px 16px;border-left:2px solid transparent;color:var(--dim);
+      font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.11em;text-transform:uppercase}
+  .st:hover{color:var(--ink);background:var(--raised)}
+  .st[aria-current="true"]{color:var(--purple-lift);border-left-color:var(--purple);background:var(--purple-tint)}
+  .st .sub{display:block;font-family:var(--mono);font-size:9px;font-weight:400;letter-spacing:.05em;
+           text-transform:none;color:var(--faint);margin-top:2px}
+  .rail-foot{margin-top:20px;padding:12px 16px 0;border-top:1px solid var(--line)}
+  .rail-foot .k{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .rail-foot .v{font-size:11px;color:var(--dim);margin-top:3px}
+
+  /* ---------- stage ---------- */
+  .stage{overflow-y:auto;padding:26px 30px 40px}
+  .view[hidden]{display:none}
+
+  .h1{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.22em;
+      text-transform:uppercase;color:var(--silver);margin:0 0 4px}
+  .h1-sub{font-size:11px;color:var(--faint);letter-spacing:.05em;margin:0 0 22px}
+
+  /* the one big state block */
+  .state{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--purple);
+         border-radius:3px;padding:20px 22px;margin-bottom:22px;display:flex;
+         align-items:center;gap:26px;flex-wrap:wrap}
+  .state .big{font-family:var(--disp);font-size:52px;font-weight:700;line-height:.95;
+              color:var(--purple-lift);letter-spacing:.01em}
+  .state .col .k{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .state .col .v{font-family:var(--disp);font-size:26px;font-weight:700;line-height:1.1;margin-top:3px;color:var(--ink)}
+  .state .col .v.sm{font-size:17px;font-family:var(--mono);font-weight:400}
+
+  /* alert rows */
+  .alert{border-radius:2px;padding:13px 16px;margin-bottom:9px;display:flex;
+         align-items:center;gap:16px;border-left:3px solid var(--line);background:var(--panel)}
+  .alert.bad{border-left-color:var(--fail);background:var(--fail-tint)}
+  .alert.warn{border-left-color:var(--warn);background:var(--warn-tint)}
+  .alert.good{border-left-color:var(--pass);background:var(--pass-tint)}
+  .alert .job{font-family:var(--disp);font-size:19px;font-weight:700;letter-spacing:.03em;
+              width:210px;flex-shrink:0;color:var(--ink)}
+  .alert .where{font-size:11px;color:var(--dim);letter-spacing:.05em;flex:1}
+  .alert .flag{font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.12em;
+               text-transform:uppercase;white-space:nowrap}
+  .alert.bad .flag{color:var(--fail)}
+  .alert.warn .flag{color:var(--warn)}
+  .alert.good .flag{color:var(--pass)}
+
+  .sect{font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.2em;
+        text-transform:uppercase;color:var(--faint);margin:26px 0 11px;
+        display:flex;align-items:center;gap:12px}
+  .sect::after{content:'';flex:1;height:1px;background:var(--line)}
+
+  .next{background:var(--sunken);border:1px solid var(--line);border-left:3px solid var(--purple);
+        border-radius:3px;padding:17px 20px;margin-top:26px}
+  .next .k{font-family:var(--disp);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+           color:var(--purple-lift);margin-bottom:7px}
+  .next .v{font-size:15px;color:var(--ink);line-height:1.5}
+
+  /* station placeholder */
+  .slot{border:1px dashed var(--line-hot);border-radius:3px;padding:44px 30px;text-align:center;
+        background:var(--panel)}
+  .slot .n{font-family:var(--disp);font-size:27px;font-weight:700;letter-spacing:.09em;
+           text-transform:uppercase;color:var(--silver)}
+  .slot .p{font-size:12px;color:var(--dim);margin-top:9px;line-height:1.6}
+  .slot .path{font-size:11px;color:var(--purple-lift);margin-top:14px;letter-spacing:.03em}
+  .carry{margin-top:16px;background:var(--purple-tint);border:1px solid rgba(146,51,230,.3);
+         border-radius:2px;padding:11px 15px;font-size:11px;color:var(--dim);text-align:left}
+  .carry b{color:var(--ink);font-weight:500}
+
+  .frame{border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--panel);
+         height:calc(100vh - 190px);min-height:460px}
+  .frame iframe{width:100%;height:100%;border:none;display:block;background:var(--bg)}
+  .framenote{font-size:11px;color:var(--faint);margin-top:9px;line-height:1.5}
+  .framenote b{color:var(--dim);font-weight:500}
+  .noteline{font-size:11px;color:var(--faint);margin-top:20px;line-height:1.6;max-width:620px}
+
+  @media(max-width:820px){
+    .term{grid-template-columns:96px 1fr}
+    .st{font-size:13px;padding:11px 12px}
+    .strip{gap:12px;padding:0 12px}
+    .strip-item.opt{display:none}
+    .stage{padding:20px 16px 40px}
+    .alert .job{width:150px;font-size:16px}
+    .state .big{font-size:42px}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<div class="term">
+  <div class="strip">
+    <div class="brand">Stealth <span>R&amp;D</span></div><span class="ver" id="sVer">v1.0</span>
+    <div class="strip-sep"></div>
+    <div class="strip-item">JOB <b id="sJob">—</b></div>
+    <div class="strip-item opt">OP <b id="sOp">—</b></div>
+    <div class="strip-right">
+      <div class="feed" id="sFeed">Loading</div>
+      <div class="livepill" id="sPill" data-s="idle"><span class="d"></span><span class="t" id="sElapsed">Idle</span></div>
+      <div class="clockstrip" id="sClock">—</div>
+    </div>
+  </div>
+
+  <nav class="rail">
+    <div class="rail-lbl">Stations</div>
+    <button class="st" aria-current="true" data-v="home">Status</button>
+    <button class="st" data-v="clock">Clock<span class="sub">time · counts</span></button>
+    <button class="st" data-v="quality">Quality<span class="sub">inspection</span></button>
+    <button class="st" data-v="quote">Quote<span class="sub">pricing</span></button>
+    <button class="st" data-v="board">Board<span class="sub">jobs</span></button>
+    <button class="st" data-v="office">Office<span class="sub">invoices</span></button>
+    <div class="rail-foot">
+      <div class="k">Shop hours this week</div>
+      <div class="v" id="sWeek">—</div>
+    </div>
+  </nav>
+
+  <main class="stage">
+
+    <!-- HOME -->
+    <section class="view" id="v-home">
+      <p class="h1">Shop status</p>
+      <p class="h1-sub" id="today">—</p>
+
+      <div class="state">
+        <div class="big" id="mRate">—<span style="font-size:20px;color:var(--dim)">/hr</span></div>
+        <div class="col">
+          <div class="k">On the clock</div>
+          <div class="v" id="mElapsed">—</div>
+        </div>
+        <div class="col">
+          <div class="k">Current job</div>
+          <div class="v sm" id="mJob">—</div>
+        </div>
+        <div class="col">
+          <div class="k">Outstanding</div>
+          <div class="v" id="mOut">—</div>
+        </div>
+      </div>
+
+      <div class="sect">Late</div>
+      <div id="mLate"></div>
+
+      <div class="sect">Due this week</div>
+      <div id="mDue"></div>
+
+      <div class="sect">Needs attention</div>
+      <div id="mAttn"></div>
+
+      <div class="next">
+        <div class="k">Next</div>
+        <div class="v" id="mNext">—</div>
+      </div>
+
+      <p class="noteline">Home is the shop's state, not an app menu. Walk up and you know where things
+      stand without touching anything. You only open a station when you're going to do something.</p>
+    </section>
+
+    <!-- STATIONS -->
+    <section class="view" id="v-clock" hidden>
+      <p class="h1">Clock</p>
+      <p class="h1-sub">Time and part counts</p>
+      <div class="frame"><iframe src="shop_timeclock.html" title="Shop time clock"></iframe></div>
+      <p class="framenote">Loads <b>shop_timeclock.html</b> from this folder. Blank frame means the file
+      isn't sitting next to this one yet.</p>
+    </section>
+
+    <section class="view" id="v-quality" hidden>
+      <p class="h1">Quality</p>
+      <p class="h1-sub">Dimensional inspection</p>
+      <div class="frame"><iframe src="qc_inspection.html" title="QC inspection"></iframe></div>
+      <p class="framenote">Loads <b>qc_inspection.html</b> from this folder.</p>
+    </section>
+
+    <section class="view" id="v-quote" hidden>
+      <p class="h1">Quote</p>
+      <p class="h1-sub">Pricing and lead time</p>
+      <div class="frame"><iframe src="quote-generator.html" title="Quote generator"></iframe></div>
+      <p class="framenote">Loads <b>quote-generator.html</b> from this folder. Rename the file if yours
+      differs and the station picks it up.</p>
+    </section>
+
+    <section class="view" id="v-board" hidden>
+      <p class="h1">Board</p>
+      <p class="h1-sub">Jobs and stages</p>
+      <div class="slot">
+        <div class="n">Job board</div>
+        <div class="p">Read-only view of every open job, stage, and due date.</div>
+        <div class="path">Not built yet</div>
+      </div>
+      <div class="carry">This is the station that would replace opening Trello on the tablet — and the one
+      most affected if you ever self-host the board.</div>
+    </section>
+
+    <section class="view" id="v-office" hidden>
+      <p class="h1">Office</p>
+      <p class="h1-sub">Invoices and folders</p>
+      <div class="slot">
+        <div class="n">Invoice &amp; award sweeps</div>
+        <div class="p">Draft invoices for shipped jobs. Build folders for new awards.</div>
+        <div class="path">Not built yet</div>
+      </div>
+      <div class="carry">These need a live call out to Claude, unlike the tools above which run entirely
+      on the tablet. Worth keeping them in <b>one station</b> so the reliable and the networked don't mix.</div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function(){
+  // ---- VERSION -------------------------------------------------
+  // Single source of truth. Bump this on every deployed change;
+  // the header badge below reads from it automatically.
+  var APP_VERSION = 'v1.1';
+  document.getElementById('sVer').textContent = APP_VERSION;
+  document.title = 'Terminal — Stealth R&D ' + APP_VERSION;
+
+  // ---- DATA FEED -------------------------------------------------
+  // Every number on Status comes from one blob key via /api/data.
+  // Nothing here is hardcoded: no data means dashes and an empty
+  // state, never a plausible-looking stale number.
+  //
+  // GET /api/data?key=dashboard  ->  value:
+  // {
+  //   "updated":  "2026-09-06T14:22:00Z",      // ISO, drives LIVE/STALE
+  //   "clock":    { "job":"100849 — PO 15902", "op":2,
+  //                 "startedAt":"2026-09-06T13:10:00Z", "running":true },
+  //   "week":     { "hours":6.8, "target":15, "rate":47 },
+  //   "outstanding": 1200,
+  //   "late":     [ {"job":"100844 — PO 15902","where":"Machining · Roberts","flag":"18 days over"} ],
+  //   "dueWeek":  [ {"job":"100101 — PO 15935","where":"Job planning · Roberts · 51 pcs","flag":"Fri · 4 days"} ],
+  //   "attention":[ {"job":"Invoice 1048","where":"Roberts · sent, Net 30","flag":"Awaiting","level":"good"} ],
+  //   "next":     "Finish 100849 and move it out of packaging."
+  // }
+  //
+  // clock  <- written by shop_timeclock.html
+  // week / outstanding / late / dueWeek / attention / next
+  //        <- written by Claude on invoice sweep + award sweep
+  var DATA_KEY  = 'dashboard';
+  var POLL_MS   = 60000;   // dashboard refresh
+  var STALE_MIN = 90;      // minutes before the feed pill turns amber
+  var CACHE_KEY = 'srd_dashboard_cache';
+  // ----------------------------------------------------------------
+
+  var D = null;            // last good payload
+  var $ = function(id){return document.getElementById(id)};
+
+  function pad(n){return String(n).padStart(2,'0')}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];})}
+  function money(n){
+    if(n==null||isNaN(n))return null;
+    return '$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  }
+  function hm(secs){
+    if(secs==null||secs<0)return null;
+    return Math.floor(secs/3600)+':'+pad(Math.floor(secs%3600/60));
+  }
+
+  // api/data.js response shape is not yet confirmed against a real call,
+  // so accept {value:{...}}, {value:"<json>"} or a bare object.
+  function unwrap(body){
+    var v = (body && typeof body==='object' && 'value' in body) ? body.value : body;
+    if(typeof v==='string'){ try{ v=JSON.parse(v) }catch(e){ return null } }
+    return (v && typeof v==='object') ? v : null;
+  }
+
+  function setFeed(state,label){
+    var f=$('sFeed'); f.dataset.s=state; f.textContent=label;
+  }
+
+  function load(){
+    fetch('/api/data?key='+encodeURIComponent(DATA_KEY),{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){
+        if(r.status===401||r.status===403) throw new Error('auth');
+        if(!r.ok) throw new Error('http '+r.status);
+        return r.json();
+      })
+      .then(function(body){
+        var v=unwrap(body);
+        if(!v) throw new Error('shape');
+        D=v;
+        try{ localStorage.setItem(CACHE_KEY,JSON.stringify(v)) }catch(e){}
+        render();
+      })
+      .catch(function(err){
+        if(!D){
+          var c=null;
+          try{ c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null') }catch(e){}
+          if(c){ D=c; render(); setFeed('down','Offline · cached'); return; }
+        }
+        render();
+        setFeed('down', err.message==='auth' ? 'Signed out' : 'No feed');
+      });
+  }
+
+  function rows(list,fallbackLevel,emptyMsg){
+    if(!list||!list.length) return '<div class="empty">'+esc(emptyMsg)+'</div>';
+    return list.map(function(it){
+      var lvl=it.level||fallbackLevel||'';
+      return '<div class="alert '+esc(lvl)+'">'+
+        '<div class="job">'+esc(it.job)+'</div>'+
+        '<div class="where">'+esc(it.where)+'</div>'+
+        '<div class="flag"'+(lvl?'':' style="color:var(--dim)"')+'>'+esc(it.flag)+'</div>'+
+      '</div>';
+    }).join('');
+  }
+
+  function render(){
+    var d=D||{};
+    var wk=d.week||{}, ck=d.clock||{};
+
+    $('sJob').textContent = ck.job || '—';
+    $('sOp').textContent  = (ck.op==null?'—':ck.op);
+    $('mJob').textContent = ck.job ? (ck.job.split(' — ')[0] + (ck.op!=null?' — OP'+ck.op:'')) : '—';
+
+    $('mRate').innerHTML  = (wk.rate!=null ? esc(money(wk.rate)) : '—') +
+                            '<span style="font-size:20px;color:var(--dim)">/hr</span>';
+    $('mOut').textContent  = money(d.outstanding) || '—';
+    $('sWeek').textContent = (wk.hours!=null ? wk.hours+' / '+(wk.target!=null?wk.target:'—') : '—');
+
+    $('mLate').innerHTML = rows(d.late,'bad','Nothing late.');
+    $('mDue').innerHTML  = rows(d.dueWeek,'warn','Nothing due this week.');
+    $('mAttn').innerHTML = rows(d.attention,'','Nothing waiting on you.');
+    $('mNext').textContent = d.next || (D ? 'No next action set. Run a sweep to fill this in.'
+                                          : 'No shop data yet. Run a sweep to populate the dashboard.');
+
+    // feed freshness
+    if(D && d.updated){
+      var age=(Date.now()-new Date(d.updated).getTime())/60000;
+      if(isNaN(age))        setFeed('','Feed ?');
+      else if(age>STALE_MIN)setFeed('stale','Stale '+(age<1440?Math.round(age)+'m':Math.round(age/1440)+'d'));
+      else                  setFeed('ok','Live');
+    } else if(D){ setFeed('stale','No timestamp'); }
+  }
+
+  function tick(){
+    var now=new Date();
+    $('sClock').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+    $('today').textContent=
+      now.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}).toUpperCase();
+
+    var ck=(D&&D.clock)||{}, pill=$('sPill'), el=null;
+    if(ck.running && ck.startedAt){
+      var t=new Date(ck.startedAt).getTime();
+      if(!isNaN(t)) el=Math.floor((Date.now()-t)/1000);
+    }
+    if(el!=null){
+      pill.dataset.s='run';
+      $('sElapsed').textContent='Running '+hm(el);
+      $('mElapsed').textContent=hm(el);
+    }else{
+      pill.dataset.s='idle';
+      $('sElapsed').textContent='Idle';
+      $('mElapsed').textContent='—';
+    }
+  }
+
+  tick(); setInterval(tick,1000);
+  load(); setInterval(load,POLL_MS);
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden) load() });
+
+  document.querySelectorAll('.st').forEach(function(b){
+    b.addEventListener('click',function(){
+      document.querySelectorAll('.st').forEach(function(x){x.setAttribute('aria-current','false')});
+      b.setAttribute('aria-current','true');
+      ['home','clock','quality','quote','board','office'].forEach(function(v){
+        document.getElementById('v-'+v).hidden=(v!==b.dataset.v);
+      });
+      document.querySelector('.stage').scrollTop=0;
+    });
+  });
+})();
+</script>
