@@ -1,4 +1,4 @@
-import { next } from '@vercel/edge';
+import { next } from '@vercel/functions';
 
 // Runs on every request that matches `config.matcher` below.
 // Checks for a valid session cookie; if missing/wrong, bounces to /login.
