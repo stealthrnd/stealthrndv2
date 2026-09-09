@@ -1,0 +1,927 @@
+<!-- quote-generator.html | Stealth R&D | v1.1.0 -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+  *, *::before, *::after{box-sizing:border-box}
+  :root{
+    --accent:#9233E6; --accent-light:#A855F7; --accent-deep:#6B21C4;
+    --accent-glow:rgba(146,51,230,.13); --accent-tint:rgba(146,51,230,.11);
+    --silver:#CCCCCC;
+    --bg:#232327; --panel:#2C2C31; --panel-2:#35353B; --input-bg:#060606;
+    --line:#43434B; --line-hot:#54545E;
+    --ink:#F4F4F6; --ink-dim:#A6A6B2; --ink-faint:#7C7C88;
+    --on-accent:#060606;
+    --pass:#4ADE80; --warn:#F0B429; --fail:#F87171; --live:var(--pass);
+    --pass-tint:rgba(74,222,128,.11); --warn-tint:rgba(240,180,41,.11); --fail-tint:rgba(248,113,113,.11);
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --disp:'Barlow Condensed','Oswald',system-ui,sans-serif;
+  }
+  html{background:transparent}
+  body{margin:0;background:transparent;color:var(--ink);font-family:var(--mono);font-size:14px}
+
+  /* This tool is iframed into terminal.html, which paints the dithered shop
+     background behind it. .wrap is the readable surface that floats on top —
+     tinted + blurred where the browser supports it, solid where it doesn't,
+     so text always keeps a clear backing. */
+  .wrap{max-width:880px;margin:0 auto;padding:0 0 70px;min-height:100vh;position:relative;background:rgba(35,35,39,.95)}
+  @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    .wrap{background:rgba(35,35,39,.80);backdrop-filter:blur(20px) saturate(120%);-webkit-backdrop-filter:blur(20px) saturate(120%)}
+  }
+
+  /* header */
+  .hdr{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--line);padding:14px 16px 0;overflow:hidden}
+  .hdr::before{content:'';position:absolute;inset:-30%;
+    background-image:
+      radial-gradient(ellipse 55% 65% at 30% -10%, rgba(168,85,247,.30), transparent 62%),
+      radial-gradient(ellipse 50% 55% at 90% 105%, rgba(107,33,196,.22), transparent 60%);
+    filter:blur(18px);animation:hdrAura 14s ease-in-out infinite alternate;pointer-events:none}
+  .hdr::after{content:'';position:absolute;inset:0;
+    background:radial-gradient(ellipse 70% 100% at 50% -10%, rgba(168,85,247,.14), transparent 70%);
+    animation:hdrFlick 8s steps(1,end) infinite;pointer-events:none}
+  @keyframes hdrAura{from{transform:translate(0,0)}to{transform:translate(4%,3%)}}
+  @keyframes hdrFlick{0%,100%{opacity:.5}3%{opacity:.92}4.5%{opacity:.38}41%{opacity:.6}42%{opacity:.95}43.5%{opacity:.5}76%{opacity:.72}77%{opacity:.42}}
+  @keyframes ledFlicker{0%,88%,100%{opacity:1}90%{opacity:.35}92%{opacity:1}94%{opacity:.5}}
+  .hdr>*{position:relative;z-index:1}
+  .hdr-top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand{font-family:var(--disp);font-size:26px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--silver);line-height:1}
+  .brand span{color:var(--accent-light)}
+  .hdr-meta{font-size:11px;color:var(--ink-dim);letter-spacing:.05em;margin-left:auto}
+  .hdr-meta b{color:var(--ink);font-weight:500}
+  .ver{font-size:10px;color:var(--ink-faint);letter-spacing:.1em;text-transform:uppercase}
+
+  .tabs{display:flex;gap:2px;margin-top:14px}
+  .tab{flex:1;padding:11px 8px;text-align:center;cursor:pointer;font-family:var(--disp);font-size:15px;
+    font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);background:none;
+    border:none;border-bottom:2px solid transparent}
+  .tab[aria-selected="true"]{color:var(--accent-light);border-bottom-color:var(--accent)}
+  .tab:focus-visible{outline:none;color:var(--ink);box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px var(--accent-glow)}
+
+  .pane{padding:20px 16px}
+  .pane[hidden]{display:none}
+
+  .eyebrow{font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink-faint);margin:0 0 11px;display:flex;align-items:center;gap:11px}
+  .eyebrow::after{content:'';flex:1;height:1px;background:var(--line)}
+
+  label{display:block;font-size:10px;letter-spacing:.09em;color:var(--ink-dim);margin-bottom:5px;text-transform:uppercase}
+  input,select{width:100%;background:var(--input-bg);border:1px solid var(--line);color:var(--ink);
+    font-family:var(--mono);font-size:15px;padding:10px 11px;border-radius:3px}
+  input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+  input::placeholder{color:var(--ink-faint)}
+  .hint{font-size:10px;color:var(--ink-faint);margin-top:5px;line-height:1.5}
+  .grid{display:grid;gap:12px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .fld{margin-bottom:14px}
+
+  button.act{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+    background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);padding:12px 20px;border-radius:3px;cursor:pointer}
+  button.act:hover{background:var(--accent-light);border-color:var(--accent-light)}
+  button.act:active{transform:translateY(1px)}
+  button.ghost{background:none;color:var(--ink-dim);border:1px solid var(--line)}
+  button.ghost:hover{background:var(--panel-2);color:var(--ink);border-color:var(--line-hot)}
+  button.ghost.danger{color:var(--fail);border-color:var(--fail)}
+  button.sm{font-size:12px;padding:7px 12px}
+  button:disabled{background:var(--panel-2);color:var(--ink-faint);border-color:var(--line);cursor:not-allowed;opacity:.6}
+  button:focus-visible{outline:none;box-shadow:0 0 0 1px var(--accent),0 0 0 3px var(--accent-glow)}
+  .btns,.row-btns{display:flex;gap:9px;flex-wrap:wrap;margin-top:18px}
+
+  .drop{border:1px dashed var(--line-hot);background:var(--panel);border-radius:3px;padding:36px 18px;text-align:center;cursor:pointer}
+  .drop:hover{border-color:var(--accent);background:var(--panel-2)}
+  .drop .n{font-family:var(--disp);font-size:20px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--silver)}
+  .drop .p{font-size:11px;color:var(--ink-faint);margin-top:6px}
+  .or{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--ink-faint);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
+  .or::before,.or::after{content:'';flex:1;height:1px;background:var(--line)}
+  .prev{max-width:100%;max-height:280px;border:1px solid var(--line);border-radius:3px;margin-top:12px;display:block}
+
+  .modebar{display:flex;margin-bottom:16px}
+  .modebar .m{flex:1;background:var(--panel);color:var(--ink-dim);border:1px solid var(--line);margin-right:-1px;
+    padding:10px 8px;cursor:pointer;font-family:var(--disp);font-size:13px;font-weight:600;
+    letter-spacing:.09em;text-transform:uppercase}
+  .modebar .m:hover{background:var(--panel-2);color:var(--ink)}
+  .modebar .m.on{background:var(--accent);color:#fff;border-color:var(--accent);position:relative;z-index:1}
+
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th{text-align:left;font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint);
+    padding:7px 8px;border-bottom:1px solid var(--line-hot)}
+  td{padding:5px 8px;border-bottom:1px solid var(--line)}
+  td input{padding:6px 7px;font-size:13px}
+  td.n{text-align:right}
+  .x{background:none;border:none;color:var(--ink-faint);font-size:18px;cursor:pointer;padding:0;line-height:1}
+  .x:hover{color:var(--fail)}
+
+  /* price block */
+  .price{background:var(--input-bg);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:3px;padding:20px 22px;margin-top:20px}
+  .price .top{text-align:center;padding-bottom:15px;border-bottom:1px solid var(--line)}
+  .price .k{font-family:var(--disp);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint)}
+  .price .v{font-family:var(--disp);font-size:54px;font-weight:700;line-height:1;color:var(--accent-light);margin-top:2px;animation:priceGlow 5.5s ease-in-out infinite}
+  @keyframes priceGlow{0%,100%{text-shadow:0 0 12px rgba(168,85,247,.35)}50%{text-shadow:0 0 22px rgba(168,85,247,.6)}}
+  .price .sub{font-size:12px;color:var(--ink-dim);margin-top:5px}
+  .bd{margin-top:14px;font-size:11px}
+  .bd div{display:flex;justify-content:space-between;gap:14px;padding:4px 0;color:var(--ink-dim)}
+  .bd div.t{border-top:1px solid var(--line);margin-top:7px;padding-top:8px;color:var(--silver);font-weight:600}
+
+  .tag{display:inline-block;font-size:9px;padding:2px 7px;border:1px solid var(--line-hot);border-radius:2px;
+    letter-spacing:.09em;text-transform:uppercase;color:var(--ink-dim);margin-left:8px}
+  .tag.ai{background:var(--accent-tint);color:var(--accent-light);border-color:var(--accent)}
+
+  .note{background:var(--accent-tint);border:1px solid rgba(146,51,230,.3);border-left:3px solid var(--accent);
+    border-radius:2px;padding:11px 14px;font-size:11px;color:var(--ink-dim);margin-bottom:14px;line-height:1.6}
+  .err{background:var(--fail-tint);border:1px solid rgba(248,113,113,.35);border-left:3px solid var(--fail);
+    border-radius:2px;padding:11px 14px;font-size:11px;color:#FCA5A5;margin-bottom:14px;line-height:1.6}
+  .ok{color:var(--pass)}
+
+  .load{display:flex;align-items:center;gap:10px;color:var(--ink-dim);font-size:12px;padding:12px 0}
+  .spin{width:15px;height:15px;border:2px solid var(--line-hot);border-top-color:var(--accent-light);
+    border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  .qrow{border:1px solid var(--line);background:var(--panel);border-radius:3px;margin-bottom:9px;padding:13px 15px;cursor:pointer}
+  .qrow:hover{border-color:var(--accent)}
+  .qrow .r{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .qrow .nm{font-family:var(--disp);font-size:18px;font-weight:700;letter-spacing:.03em;color:var(--ink)}
+  .qrow .tot{font-size:16px;font-weight:600;color:var(--accent-light)}
+  .qrow .mt{font-size:10px;color:var(--ink-faint);letter-spacing:.05em;margin-top:3px}
+  .detail{margin-top:12px;border-top:1px solid var(--line);padding-top:13px}
+  .empty{color:var(--ink-faint);font-size:12px;padding:34px 0;text-align:center}
+  .sep{height:1px;background:var(--line);margin:22px 0}
+
+  /* save dialog */
+  .scrim{position:fixed;inset:0;background:rgba(6,6,6,.72);display:grid;place-items:center;z-index:60;padding:18px}
+  .dlg{background:var(--panel);border:1px solid var(--line-hot);border-radius:4px;max-width:430px;width:100%;padding:24px}
+  .dlg h3{font-family:var(--disp);font-size:19px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    margin:0 0 6px;color:var(--silver)}
+  .dlg p{font-size:11px;color:var(--ink-dim);margin:0 0 18px;line-height:1.6}
+  .pick{display:block;width:100%;text-align:left;background:var(--input-bg);border:1px solid var(--line);
+    border-radius:3px;padding:15px 17px;margin-bottom:10px;cursor:pointer;color:var(--ink)}
+  .pick:hover{border-color:var(--accent);background:var(--panel-2)}
+  .pick .t{font-family:var(--disp);font-size:17px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+  .pick .d{font-size:10px;color:var(--ink-faint);margin-top:4px;line-height:1.5}
+
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel-2);
+    border:1px solid var(--line-hot);border-left:3px solid var(--accent);padding:11px 18px;border-radius:3px;
+    font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:70;max-width:90vw}
+  .toast.on{opacity:1}
+
+  @media(max-width:600px){
+    .g2,.g3{grid-template-columns:1fr}
+    .price .v{font-size:42px}
+    .brand{font-size:21px}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdr-top">
+      <div class="brand">Quote <span>Generator</span></div>
+      <div class="hdr-meta">
+        <span id="hRate">&mdash;</span> &nbsp;&middot;&nbsp; <span class="ver" id="hVer">v1.0.0</span>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-t="quote">Quote</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="settings">Settings</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="history">History</button>
+    </div>
+  </div>
+
+  <div class="pane" id="p-quote"></div>
+  <div class="pane" id="p-settings" hidden></div>
+  <div class="pane" id="p-history" hidden></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+var VERSION='1.1.0';
+/* Non-ASCII glyphs as escapes so the source stays pure ASCII and cannot
+   mojibake the way the shop tools did before charset was declared. */
+var DOT='\u00B7', DASH='\u2014', ARROW='\u2192', TIMES='\u00D7';
+
+/* == state == */
+var S={billedRate:120,padding:0,jobPrep:260,materialPerPart:0,jobCosts:100,
+       company:'Stealth R&D',contact:'',terms:'Net 30',validDays:30,leadDays:''};
+var quotes=[], img=null, an=null, ans={}, ops=[], mode='ops', cycTot=0, pph=0, job=null, openId=null;
+var dirHandle=null;
+
+var $=function(id){return document.getElementById(id)};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
+function toast(m){var t=$('toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(t._x);t._x=setTimeout(function(){t.classList.remove('on')},2600)}
+function money(n){return '$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function num(id,d){var v=parseFloat(($(id)||{}).value);return isNaN(v)?d:v}
+
+/* == storage: settings + history live in the browser == */
+var LS=(function(){
+  var ok=false; try{localStorage.setItem('__t','1');localStorage.removeItem('__t');ok=true}catch(e){}
+  var mem={};
+  return {get:function(k){ if(ok){try{return localStorage.getItem('qg:'+k)}catch(e){}} return mem[k]||null},
+          set:function(k,v){ if(ok){try{localStorage.setItem('qg:'+k,v);return}catch(e){}} mem[k]=v}};
+})();
+function saveS(){LS.set('settings',JSON.stringify(S))}
+function saveQ(){LS.set('quotes',JSON.stringify(quotes))}
+
+/* == folder handle persisted in IndexedDB == */
+var IDB={
+  db:null,
+  open:function(){ return new Promise(function(res,rej){
+    if(IDB.db) return res(IDB.db);
+    if(!window.indexedDB) return rej(new Error('no indexeddb'));
+    var r=indexedDB.open('qg-store',1);
+    r.onupgradeneeded=function(){r.result.createObjectStore('kv')};
+    r.onsuccess=function(){IDB.db=r.result;res(IDB.db)};
+    r.onerror=function(){rej(r.error)};
+  })},
+  get:function(k){ return IDB.open().then(function(db){ return new Promise(function(res,rej){
+    var t=db.transaction('kv','readonly').objectStore('kv').get(k);
+    t.onsuccess=function(){res(t.result)}; t.onerror=function(){rej(t.error)}; })})},
+  set:function(k,v){ return IDB.open().then(function(db){ return new Promise(function(res,rej){
+    var t=db.transaction('kv','readwrite').objectStore('kv').put(v,k);
+    t.onsuccess=function(){res(true)}; t.onerror=function(){rej(t.error)}; })})}
+};
+var FS_OK = typeof window.showDirectoryPicker==='function';
+
+function loadDir(){
+  if(!FS_OK) return Promise.resolve(null);
+  return IDB.get('dir').then(function(h){ if(h) dirHandle=h; return h }).catch(function(){return null});
+}
+function pickDir(){
+  return window.showDirectoryPicker({mode:'readwrite'}).then(function(h){
+    dirHandle=h; return IDB.set('dir',h).catch(function(){}).then(function(){return h});
+  });
+}
+function dirReady(){
+  if(!dirHandle) return Promise.resolve(false);
+  if(!dirHandle.queryPermission) return Promise.resolve(true);
+  return dirHandle.queryPermission({mode:'readwrite'}).then(function(p){
+    if(p==='granted') return true;
+    return dirHandle.requestPermission({mode:'readwrite'}).then(function(p2){return p2==='granted'});
+  }).catch(function(){return false});
+}
+function writeFile(name,text){
+  return dirReady().then(function(ok){
+    if(!ok||!dirHandle) throw new Error('no-folder');
+    return dirHandle.getFileHandle(name,{create:true});
+  }).then(function(fh){ return fh.createWritable() })
+    .then(function(w){ return w.write(text).then(function(){return w.close()}) })
+    .then(function(){ return {method:'folder',name:name} });
+}
+function downloadFile(name,text,type){
+  var b=new Blob([text],{type:type||'text/html;charset=utf-8'});
+  var u=URL.createObjectURL(b),a=document.createElement('a');
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(u)},1500);
+  return {method:'download',name:name};
+}
+function putFile(name,text){
+  if(dirHandle) return writeFile(name,text).catch(function(){return downloadFile(name,text)});
+  return Promise.resolve(downloadFile(name,text));
+}
+
+/* == math == */
+function cycleMin(){
+  if(mode==='total') return Number(cycTot)||0;
+  if(mode==='pph') return pph>0?60/pph:0;
+  return ops.reduce(function(s,o){return s+(Number(o.time_min)||0)},0);
+}
+function calc(j,cyc){
+  var c=cyc==null?cycleMin():cyc;
+  var padded=c*(1+(j.padding/100));
+  var runMin=padded*j.qty, totMin=runMin+j.jobPrep, hrs=totMin/60;
+  var labor=hrs*(j.rate||S.billedRate), mat=j.materialPerPart*j.qty;
+  var total=labor+mat+j.jobCosts;
+  return {cycle:c,padded:padded,runMin:runMin,totMin:totMin,hrs:hrs,labor:labor,mat:mat,
+          total:total,perPart:j.qty?total/j.qty:0};
+}
+
+/* == tabs == */
+document.querySelectorAll('.tab').forEach(function(t){
+  t.addEventListener('click',function(){
+    document.querySelectorAll('.tab').forEach(function(x){x.setAttribute('aria-selected','false')});
+    t.setAttribute('aria-selected','true');
+    ['quote','settings','history'].forEach(function(n){$('p-'+n).hidden=(n!==t.dataset.t)});
+    if(t.dataset.t==='settings')rSettings();
+    if(t.dataset.t==='history')rHistory();
+    if(t.dataset.t==='quote')rQuote();
+  });
+});
+function rHead(){$('hRate').innerHTML='<b>'+money(S.billedRate).replace('.00','')+'</b>/hr'}
+
+/* == settings == */
+function rSettings(){
+  var loc = dirHandle ? esc(dirHandle.name)
+          : (FS_OK?'<span style="color:var(--ink-faint)">none chosen \u2014 quotes download instead</span>'
+                  :'<span style="color:var(--ink-faint)">this browser downloads instead of saving to a folder</span>');
+  $('p-settings').innerHTML=
+   '<p class="eyebrow">Rate</p>'+
+   '<div class="fld" style="max-width:250px"><label>Billed rate ($/hr)</label>'+
+   '<input type="number" step="1" id="sRate" value="'+S.billedRate+'">'+
+   '<p class="hint">What you charge per hour. Every quote is built on this.</p></div>'+
+
+   '<p class="eyebrow">Defaults</p><div class="grid g2">'+
+   '<div class="fld"><label>Job prep (min)</label><input type="number" step="5" id="sPrep" value="'+S.jobPrep+'">'+
+   '<p class="hint">Setup, programming, paperwork. Once per job.</p></div>'+
+   '<div class="fld"><label>Padding (%)</label><input type="number" step="1" id="sPad" value="'+S.padding+'">'+
+   '<p class="hint">Risk cushion on cycle time.</p></div>'+
+   '<div class="fld"><label>Material ($/part)</label><input type="number" step="0.01" id="sMat" value="'+S.materialPerPart+'"></div>'+
+   '<div class="fld"><label>Job costs ($)</label><input type="number" step="1" id="sJC" value="'+S.jobCosts+'">'+
+   '<p class="hint">Tooling, shipping, outside services. Once per job.</p></div></div>'+
+
+   '<p class="eyebrow">Quote sheet</p><div class="grid g2">'+
+   '<div class="fld"><label>Company name</label><input id="sCo" value="'+esc(S.company)+'"></div>'+
+   '<div class="fld"><label>Contact line</label><input id="sCt" value="'+esc(S.contact)+'" placeholder="phone \u00B7 email"></div>'+
+   '<div class="fld"><label>Terms</label><input id="sTm" value="'+esc(S.terms)+'"></div>'+
+   '<div class="fld"><label>Quote valid (days)</label><input type="number" id="sVd" value="'+S.validDays+'"></div>'+
+   '<div class="fld"><label>Lead time (days, optional)</label><input id="sLd" value="'+esc(S.leadDays)+'" placeholder="leave blank to omit"></div>'+
+   '</div>'+
+
+   '<p class="eyebrow">Save location</p>'+
+   '<div class="note">Saved quotes are written straight to a folder you choose. '+
+   'Nothing leaves this machine.<br>Current folder: <b>'+loc+'</b></div>'+
+   (FS_OK?'<div class="btns" style="margin-top:0"><button class="act ghost sm" id="sPick">'+
+     (dirHandle?'Change folder':'Choose folder')+'</button></div>':'')+
+
+   '<div class="btns"><button class="act" id="sSave">Save settings</button>'+
+   '<span id="sOk" class="ok" style="display:none;align-self:center;font-size:12px">Saved</span></div>';
+
+  if($('sPick')) $('sPick').addEventListener('click',function(){
+    pickDir().then(function(h){ toast('Quotes will save to '+h.name); rSettings() })
+             .catch(function(){ });
+  });
+  $('sSave').addEventListener('click',function(){
+    S.billedRate=num('sRate',120); S.jobPrep=num('sPrep',0); S.padding=num('sPad',0);
+    S.materialPerPart=num('sMat',0); S.jobCosts=num('sJC',0);
+    S.company=$('sCo').value||'Stealth R&D'; S.contact=$('sCt').value;
+    S.terms=$('sTm').value||'Net 30'; S.validDays=num('sVd',30); S.leadDays=$('sLd').value;
+    saveS(); rHead();
+    var o=$('sOk'); o.style.display='inline'; setTimeout(function(){o.style.display='none'},1800);
+  });
+}
+
+/* == quote == */
+function reset(){img=null;an=null;ans={};ops=[];mode='ops';cycTot=0;pph=0;job=null;rQuote()}
+
+function rQuote(){
+  var h='';
+  if(!img && !an){
+    h='<p class="eyebrow">Start</p>'+
+      '<div class="drop" id="drop"><div class="n">Drop a blueprint</div>'+
+      '<div class="p">PDF or image \u00B7 page 1 is read</div></div>'+
+      '<div class="or"><span>or</span></div>'+
+      '<button class="act ghost" id="manual" style="width:100%">Enter values myself</button>'+
+      '<input type="file" id="file" accept="image/*,application/pdf" hidden>';
+    $('p-quote').innerHTML=h; wire(); return;
+  }
+  if(img){
+    h+='<p class="eyebrow">Blueprint</p><img class="prev" src="data:'+img.type+';base64,'+img.b64+'">'+
+       (img.pages>1?'<p class="hint">Page 1 of '+img.pages+' read.</p>':'')+
+       '<div class="btns"><button class="act ghost sm" id="over">Start over</button></div>';
+    if(!an){ h+='<div class="sep"></div><button class="act" id="read">Read this drawing</button><div id="rst"></div>';
+      $('p-quote').innerHTML=h; wire(); return; }
+  } else {
+    h+='<p class="eyebrow">Part</p><div class="grid g2">'+
+       '<div class="fld"><label>Part number</label><input id="pName" value="'+esc(an.part_name||'')+'" placeholder="516-39"></div>'+
+       '<div class="fld"><label>Customer</label><input id="pCust" value="'+esc(ans.customer||'')+'" placeholder="Roberts Manufacturing"></div></div>'+
+       '<div class="btns" style="margin-top:0"><button class="act ghost sm" id="over">Start over</button></div>';
+  }
+  h+=rCycle()+rQs()+rNums();
+  $('p-quote').innerHTML=h; wire();
+}
+
+function rCycle(){
+  var man=!!an._manual, c=cycleMin();
+  var h='<div class="sep"></div><p class="eyebrow">Cycle time'+
+    (mode==='ops'&&!man?'<span class="tag ai">from drawing</span>':'')+'</p>';
+  if(!man && an.part_name)
+    h+='<p class="hint" style="margin:-4px 0 12px"><b style="color:var(--ink)">'+esc(an.part_name)+'</b>'+
+       (an.material_guess?' \u00B7 likely '+esc(an.material_guess):'')+'</p>';
+  h+='<div class="modebar">'+
+     '<button class="m'+(mode==='ops'?' on':'')+'" data-m="ops">Per op</button>'+
+     '<button class="m'+(mode==='total'?' on':'')+'" data-m="total">Total/part</button>'+
+     '<button class="m'+(mode==='pph'?' on':'')+'" data-m="pph">Parts/hour</button></div>';
+
+  if(mode==='ops'){
+    if(!man && !ops.length) h+='<div class="note">Nothing came off that drawing. Add operations below or switch modes.</div>';
+    h+='<table><thead><tr><th style="width:26px">#</th><th>Operation</th><th style="width:78px">Min/part</th><th style="width:26px"></th></tr></thead><tbody id="ob">';
+    ops.forEach(function(o,i){
+      h+='<tr><td style="color:var(--ink-faint)">'+(i+1)+'</td>'+
+         '<td><input data-i="'+i+'" data-f="description" value="'+esc(o.description)+'" placeholder="face &amp; turn OD"></td>'+
+         '<td class="n"><input type="number" step="0.1" data-i="'+i+'" data-f="time_min" value="'+o.time_min+'"></td>'+
+         '<td><button class="x" data-rm="'+i+'">&times;</button></td></tr>';
+    });
+    h+='</tbody></table><div class="btns"><button class="act ghost sm" id="addOp">+ Operation</button>'+
+       '<span class="hint" style="align-self:center;margin:0">'+c.toFixed(2)+' min/part'+(c>0?' \u00B7 '+(60/c).toFixed(1)+'/hr':'')+'</span></div>';
+  }
+  if(mode==='total'){
+    h+='<div class="fld" style="max-width:220px"><label>Minutes per part</label>'+
+       '<input type="number" step="0.1" min="0" id="cT" value="'+(cycTot||'')+'" placeholder="4.5">'+
+       '<p class="hint" id="cTh">'+(c>0?(60/c).toFixed(1)+' parts per hour.':'Door-to-door run time for one finished part.')+'</p></div>';
+  }
+  if(mode==='pph'){
+    h+='<div class="fld" style="max-width:220px"><label>Parts per hour</label>'+
+       '<input type="number" step="0.1" min="0" id="cP" value="'+(pph||'')+'" placeholder="13">'+
+       '<p class="hint" id="cPh">'+(c>0?c.toFixed(2)+' minutes per part.':'Finished parts off the machine in one hour.')+'</p></div>';
+  }
+  if(mode!=='ops' && ops.some(function(o){return o.time_min>0}))
+    h+='<p class="hint">Per-op breakdown kept ('+ops.reduce(function(s,o){return s+(+o.time_min||0)},0).toFixed(2)+' min). Switch back any time.</p>';
+  if(an.notes) h+='<div class="note" style="margin-top:14px">'+esc(an.notes)+'</div>';
+  return h;
+}
+
+function rQs(){
+  var qs=(an.questions||[]).filter(function(q){return q.key!=='quantity'&&q.key!=='customer'});
+  if(!qs.length) return '';
+  var h='<div class="sep"></div><p class="eyebrow">Details</p><div class="grid g2">';
+  qs.forEach(function(q){
+    var v=ans[q.key]!==undefined?ans[q.key]:(q.default||'');
+    h+='<div class="fld"><label>'+esc(q.label)+'</label>';
+    if(q.type==='select'&&q.options){
+      h+='<select data-q="'+q.key+'">'+q.options.map(function(o){
+        return '<option value="'+esc(o)+'"'+(o===v?' selected':'')+'>'+esc(o)+'</option>'}).join('')+'</select>';
+    } else h+='<input type="'+(q.type==='number'?'number':'text')+'" data-q="'+q.key+'" value="'+esc(v)+'">';
+    h+='</div>';
+  });
+  return h+'</div>';
+}
+
+function rNums(){
+  var j=job||{qty:+ans.quantity||1,padding:S.padding,jobPrep:S.jobPrep,
+              materialPerPart:S.materialPerPart,jobCosts:S.jobCosts};
+  var h='<div class="sep"></div><p class="eyebrow">Numbers</p><div class="grid g3">'+
+    '<div class="fld"><label>Quantity</label><input type="number" step="1" id="jQ" value="'+j.qty+'"></div>'+
+    '<div class="fld"><label>Job prep (min)</label><input type="number" step="5" id="jP" value="'+j.jobPrep+'"></div>'+
+    '<div class="fld"><label>Padding (%)</label><input type="number" step="1" id="jD" value="'+j.padding+'"></div>'+
+    '<div class="fld"><label>Material ($/part)</label><input type="number" step="0.01" id="jM" value="'+j.materialPerPart+'"></div>'+
+    '<div class="fld"><label>Job costs ($)</label><input type="number" step="1" id="jC" value="'+j.jobCosts+'"></div>'+
+    '</div><button class="act" id="calc">Calculate</button>';
+
+  if(job&&job._r){
+    var r=job._r;
+    h+='<div class="price"><div class="top"><div class="k">Price per part</div>'+
+       '<div class="v">'+money(r.perPart)+'</div>'+
+       '<div class="sub">'+money(r.total)+' for '+job.qty+' '+(job.qty===1?'part':'parts')+'</div></div>'+
+       '<div class="bd">'+
+       '<div><span>Cycle '+r.cycle.toFixed(2)+' min'+(job.padding?' +'+job.padding+'% \u2192 '+r.padded.toFixed(2):'')+' \u00D7 '+job.qty+'</span><span>'+r.runMin.toFixed(0)+' min</span></div>'+
+       '<div><span>Job prep</span><span>'+job.jobPrep+' min</span></div>'+
+       '<div><span>Labor \u00B7 '+r.hrs.toFixed(2)+' hr @ '+money(S.billedRate).replace('.00','')+'</span><span>'+money(r.labor)+'</span></div>'+
+       '<div><span>Material \u00B7 '+money(job.materialPerPart)+' \u00D7 '+job.qty+'</span><span>'+money(r.mat)+'</span></div>'+
+       '<div><span>Job costs</span><span>'+money(job.jobCosts)+'</span></div>'+
+       '<div class="t"><span>Total</span><span>'+money(r.total)+'</span></div></div></div>'+
+       '<div class="btns"><button class="act" id="save">Save quote</button>'+
+       '<button class="act ghost" id="newq">New quote</button></div>';
+  }
+  return h;
+}
+
+function grabOps(){document.querySelectorAll('#ob input').forEach(function(i){
+  var o=ops[+i.dataset.i]; if(!o)return;
+  o[i.dataset.f]=i.dataset.f==='time_min'?(parseFloat(i.value)||0):i.value})}
+function grabCyc(){grabOps();
+  if($('cT'))cycTot=parseFloat($('cT').value)||0;
+  if($('cP'))pph=parseFloat($('cP').value)||0}
+function grabAns(){document.querySelectorAll('[data-q]').forEach(function(i){ans[i.dataset.q]=i.value});
+  if($('pName'))an.part_name=$('pName').value;
+  if($('pCust'))ans.customer=$('pCust').value}
+
+function on(id,ev,fn){var e=$(id); if(e)e.addEventListener(ev,fn)}
+
+function wire(){
+  var d=$('drop'),f=$('file');
+  if(d&&f){
+    d.addEventListener('click',function(){f.click()});
+    d.addEventListener('dragover',function(e){e.preventDefault();d.style.borderColor='var(--accent)'});
+    d.addEventListener('dragleave',function(){d.style.borderColor='var(--line-hot)'});
+    d.addEventListener('drop',function(e){e.preventDefault();if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0])});
+    f.addEventListener('change',function(e){if(e.target.files[0])handleFile(e.target.files[0])});
+  }
+  on('over','click',reset);
+  on('manual','click',function(){
+    an={_manual:true,part_name:'',questions:[matQ()]};
+    ops=[{description:'',time_min:0}];ans={material:''};job=null;rQuote();
+  });
+  on('pName','input',function(e){an.part_name=e.target.value});
+  on('pCust','input',function(e){ans.customer=e.target.value});
+  on('read','click',readDrawing);
+  on('addOp','click',function(){grabOps();ops.push({description:'',time_min:0});rQuote()});
+  document.querySelectorAll('[data-rm]').forEach(function(b){
+    b.addEventListener('click',function(){grabOps();ops.splice(+b.dataset.rm,1);rQuote()})});
+  document.querySelectorAll('[data-m]').forEach(function(b){
+    b.addEventListener('click',function(){
+      grabCyc(); var nx=b.dataset.m, cur=cycleMin();
+      if(nx==='total'&&!cycTot&&cur>0)cycTot=+cur.toFixed(2);
+      if(nx==='pph'&&!pph&&cur>0)pph=+(60/cur).toFixed(1);
+      mode=nx;job=null;rQuote();
+    })});
+  on('cT','input',function(e){cycTot=parseFloat(e.target.value)||0;
+    if($('cTh'))$('cTh').textContent=cycTot>0?(60/cycTot).toFixed(1)+' parts per hour.':'Door-to-door run time for one finished part.'});
+  on('cP','input',function(e){pph=parseFloat(e.target.value)||0;
+    if($('cPh'))$('cPh').textContent=pph>0?(60/pph).toFixed(2)+' minutes per part.':'Finished parts off the machine in one hour.'});
+
+  on('calc','click',function(){
+    grabCyc();grabAns();
+    job={qty:num('jQ',1),padding:num('jD',0),jobPrep:num('jP',0),
+         materialPerPart:num('jM',0),jobCosts:num('jC',0),rate:S.billedRate};
+    job._r=calc(job); rQuote();
+  });
+  on('save','click',askType);
+  on('newq','click',reset);
+}
+function matQ(){return {key:'material',label:'Material',type:'select',
+  options:['Aluminum 6061','Aluminum 7075','Steel 1018','Steel 4140','Stainless 303','Stainless 304','Stainless 316','Brass','Other'],default:''}}
+
+/* == file \u2192 image == */
+function handleFile(file){
+  var done=function(){an=null;ans={};ops=[];job=null;rQuote()};
+  if(file.type==='application/pdf'){
+    file.arrayBuffer().then(function(buf){return pdfjsLib.getDocument({data:buf}).promise})
+    .then(function(pdf){ return pdf.getPage(1).then(function(pg){
+      var base=pg.getViewport({scale:1});
+      var sc=Math.min(2,1800/Math.max(base.width,base.height));
+      var vp=pg.getViewport({scale:Math.max(sc,.5)});
+      var c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;
+      var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+      return pg.render({canvasContext:x,viewport:vp}).promise.then(function(){
+        var b=c.toDataURL('image/jpeg',.85).split(',')[1],q=.7;
+        while(b.length>3500000&&q>=.4){b=c.toDataURL('image/jpeg',q).split(',')[1];q-=.15}
+        img={b64:b,type:'image/jpeg',pages:pdf.numPages};done();
+      });})})
+    .catch(function(e){$('p-quote').innerHTML='<div class="err">Couldn\'t read that PDF: '+esc(e.message||e)+
+      '</div><button class="act ghost" id="over">Back</button>';wire()});
+  } else {
+    var r=new FileReader();
+    r.onload=function(){var i=new Image();
+      i.onload=function(){var w=i.width,h=i.height,m=1500;
+        if(w>m||h>m){var s=m/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s)}
+        var c=document.createElement('canvas');c.width=w;c.height=h;
+        c.getContext('2d').drawImage(i,0,0,w,h);
+        img={b64:c.toDataURL('image/jpeg',.9).split(',')[1],type:'image/jpeg'};done()};
+      i.src=r.result};
+    r.readAsDataURL(file);
+  }
+}
+
+/* == AI read == */
+function readDrawing(){
+  var st=$('rst'); $('read').disabled=true;
+  st.innerHTML='<div class="load"><span class="spin"></span>Reading the drawing...</div>';
+  var prompt='You are an estimator at a CNC machine shop reading an engineering drawing to prepare a rough quote.\n\n'+
+  'Respond with STRICT JSON ONLY (no fences, no preamble):\n'+
+  '{"part_name":"part number from the drawing","material_guess":"material called out, or empty",'+
+  '"operations":[{"description":"FACE & TURN OD","time_min":2.5}],'+
+  '"notes":"one or two sentences on what a machinist should double check. Be clear these are rough estimates, not a time study.",'+
+  '"questions":[{"key":"material","label":"Material","type":"select","options":["Aluminum 6061","Aluminum 7075","Steel 1018","Steel 4140","Stainless 303","Stainless 304","Stainless 316","Brass","Other"],"default":""}]}\n\n'+
+  'Rules:\n- Break the part into realistic discrete operations based on what is dimensioned.\n'+
+  '- time_min is MINUTES PER PART. Estimate conservatively.\n'+
+  '- Always include the material question. Never ask quantity or customer.\n'+
+  '- Add other questions only for cost drivers not readable from the drawing (finish, plating, packaging).\n- Valid JSON only.';
+
+  var body={model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:[
+    {type:'image',source:{type:'base64',media_type:img.type,data:img.b64}},{type:'text',text:prompt}]}]};
+
+  var attempt=function(n){
+    return fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){return r.json()})
+    .then(function(d){ if(d.error) throw new Error(d.error.message||'API error'); return d })
+    .catch(function(e){ if(n>0){st.innerHTML='<div class="load"><span class="spin"></span>Retrying...</div>';
+      return new Promise(function(r){setTimeout(r,1200)}).then(function(){return attempt(n-1)})} throw e });
+  };
+
+  attempt(1).then(function(d){
+    var t=(d.content||[]).filter(function(b){return b.type==='text'})
+      .map(function(b){return b.text}).join('\n').replace(/```json|```/g,'').trim();
+    var p=JSON.parse(t);
+    an=p; ops=(p.operations||[]).map(function(o){return {description:o.description||'',time_min:+o.time_min||0}});
+    ans={}; (p.questions||[]).forEach(function(q){ans[q.key]=q.default||''});
+    mode='ops';cycTot=0;pph=0;job=null;rQuote();
+  }).catch(function(e){
+    var raw=String(e&&e.message||e), net=/failed to fetch|networkerror|load failed/i.test(raw);
+    st.innerHTML='<div class="err">'+(net
+      ? 'Reading drawings needs this tool opened inside Claude, and a drawing small enough to send. Blank sheet added below \u2014 enter operations yourself.'
+      : 'Couldn\'t read that drawing ('+esc(raw)+'). Blank sheet added below.')+'</div>';
+    an={_manual:true,part_name:'',questions:[matQ()]};
+    ops=[{description:'',time_min:0}];ans={material:''};
+    setTimeout(rQuote,2400);
+  });
+}
+
+/* == save: ask customer or in-house == */
+function askType(){
+  var s=document.createElement('div');s.className='scrim';
+  s.innerHTML='<div class="dlg"><h3>Save quote</h3>'+
+    '<p>Two formats. The customer sheet shows price and terms only. The internal record shows every input, rate, and assumption behind it.</p>'+
+    '<button class="pick" data-k="customer"><div class="t">To a customer</div>'+
+    '<div class="d">Clean quote sheet \u2014 parts, price, terms, validity. No cost breakdown, no rates.</div></button>'+
+    '<button class="pick" data-k="internal"><div class="t">In house</div>'+
+    '<div class="d">Full record \u2014 operations, cycle math, labor/material/cost split, margin basis, every setting used.</div></button>'+
+    '<div class="btns" style="margin-top:14px"><button class="act ghost sm" data-k="cancel">Cancel</button></div></div>';
+  document.body.appendChild(s);
+  s.addEventListener('click',function(e){
+    if(e.target===s){s.remove();return}
+    var b=e.target.closest('[data-k]'); if(!b)return;
+    var k=b.dataset.k; s.remove();
+    if(k==='cancel')return;
+    doSave(k);
+  });
+}
+
+function slug(x){return String(x||'PART').trim().replace(/[^A-Za-z0-9._-]+/g,'_').replace(/^_+|_+$/g,'')||'PART'}
+function stamp(d){var p=function(n){return String(n).padStart(2,'0')};
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
+
+function doSave(kind){
+  grabCyc();grabAns();
+  var now=new Date();
+  var rec={id:'q_'+Date.now(),date:now.toISOString(),version:VERSION,
+    part:(an.part_name||'').trim()||'Unnamed part',
+    customer:(ans.customer||'').trim(),
+    ops:JSON.parse(JSON.stringify(ops)),answers:JSON.parse(JSON.stringify(ans)),
+    mode:mode,cycTot:cycTot,pph:pph,
+    manual:!!an._manual,notes:an.notes||'',
+    job:JSON.parse(JSON.stringify(job)),rate:S.billedRate,
+    settings:{terms:S.terms,validDays:S.validDays,leadDays:S.leadDays,company:S.company,contact:S.contact},
+    kind:kind,actuals:null};
+  quotes.unshift(rec); saveQ();
+
+  var name='QUOTE_'+slug(rec.part)+'_'+stamp(now)+(kind==='internal'?'_INTERNAL':'')+'.html';
+  var doc=kind==='customer'?custDoc(rec):intDoc(rec);
+  putFile(name,doc).then(function(r){
+    toast(r.method==='folder'?('Saved to '+dirHandle.name+' / '+name):('Downloaded '+name));
+    var b=$('save'); if(b){b.textContent='Saved';b.disabled=true}
+  }).catch(function(e){ toast('Save failed: '+(e.message||e)) });
+}
+
+/* == customer sheet == */
+function custDoc(q){
+  var r=q.job._r, S2=q.settings, d=new Date(q.date);
+  var valid=new Date(d.getTime()+ (S2.validDays||30)*864e5);
+  var fmtd=function(x){return x.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})};
+  var qn=q.id.replace('q_','').slice(-6);
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Quote '+esc(q.part)+'</title>'+
+  '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">'+
+  '<style>'+
+  '*{box-sizing:border-box}'+
+  'body{margin:0;background:#F2F2F4;color:#1A1A1D;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;padding:34px 20px}'+
+  '.sheet{max-width:660px;margin:0 auto;background:#fff;padding:44px 46px 38px;border-top:4px solid #9233E6;box-shadow:0 1px 3px rgba(0,0,0,.09)}'+
+  '.top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}'+
+  '.co{font-family:"Barlow Condensed",sans-serif;font-size:31px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1}'+
+  '.co span{color:#9233E6}'+
+  '.ct{font-size:10px;color:#71717A;margin-top:5px;letter-spacing:.03em}'+
+  '.qb{text-align:right}'+
+  '.qb .l{font-family:"Barlow Condensed",sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#9233E6;font-weight:600}'+
+  '.qb .n{font-size:15px;font-weight:500;margin-top:2px}'+
+  '.qb .dt{font-size:10px;color:#71717A;margin-top:5px}'+
+  'hr{border:none;border-top:1px solid #E0E0E4;margin:28px 0}'+
+  '.for{display:flex;gap:44px;flex-wrap:wrap}'+
+  '.for .k{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#9A9AA2;margin-bottom:4px}'+
+  '.for .v{font-family:"Barlow Condensed",sans-serif;font-size:21px;font-weight:600;letter-spacing:.02em}'+
+  'table{width:100%;border-collapse:collapse;margin-top:8px}'+
+  'th{text-align:left;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#9A9AA2;'+
+    'font-weight:500;padding:0 0 9px;border-bottom:1px solid #1A1A1D}'+
+  'th.r,td.r{text-align:right}'+
+  'td{padding:17px 0;border-bottom:1px solid #E8E8EC;vertical-align:top}'+
+  '.pn{font-family:"Barlow Condensed",sans-serif;font-size:22px;font-weight:600;letter-spacing:.02em;line-height:1.15}'+
+  '.pd{font-size:10px;color:#71717A;margin-top:4px}'+
+  '.qty{font-size:15px}'+
+  '.ea{font-size:15px}'+
+  '.ln{font-size:16px;font-weight:500}'+
+  '.tot{display:flex;justify-content:flex-end;margin-top:22px}'+
+  '.totbox{min-width:250px}'+
+  '.totrow{display:flex;justify-content:space-between;padding:7px 0;font-size:12px;color:#52525B}'+
+  '.totrow.big{border-top:2px solid #1A1A1D;margin-top:7px;padding-top:13px;align-items:baseline}'+
+  '.totrow.big .k{font-family:"Barlow Condensed",sans-serif;font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:#1A1A1D;font-weight:600}'+
+  '.totrow.big .v{font-family:"Barlow Condensed",sans-serif;font-size:36px;font-weight:700;color:#9233E6;line-height:1}'+
+  '.terms{margin-top:34px;display:flex;gap:38px;flex-wrap:wrap}'+
+  '.terms .k{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#9A9AA2;margin-bottom:3px}'+
+  '.terms .v{font-size:13px}'+
+  '.foot{margin-top:32px;padding-top:16px;border-top:1px solid #E0E0E4;font-size:10px;color:#9A9AA2;line-height:1.7}'+
+  '@media print{body{background:#fff;padding:0}.sheet{box-shadow:none;max-width:none;padding:26px 30px}}'+
+  '</style></head><body><div class="sheet">'+
+  '<div class="top"><div><div class="co">'+esc(S2.company||'Stealth R&D').replace(/(\s\S+)$/,'<span>$1</span>')+'</div>'+
+  (S2.contact?'<div class="ct">'+esc(S2.contact)+'</div>':'')+'</div>'+
+  '<div class="qb"><div class="l">Quotation</div><div class="n">No. '+esc(qn)+'</div>'+
+  '<div class="dt">'+fmtd(d)+'</div></div></div><hr>'+
+  (q.customer?'<div class="for"><div><div class="k">Prepared for</div><div class="v">'+esc(q.customer)+'</div></div></div><hr>':'')+
+  '<table><thead><tr><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+
+  '<tr><td><div class="pn">'+esc(q.part)+'</div>'+
+  (q.answers.material?'<div class="pd">'+esc(q.answers.material)+'</div>':'')+'</td>'+
+  '<td class="r qty">'+q.job.qty+'</td><td class="r ea">'+money(r.perPart)+'</td>'+
+  '<td class="r ln">'+money(r.total)+'</td></tr></tbody></table>'+
+  '<div class="tot"><div class="totbox">'+
+  '<div class="totrow"><span>'+q.job.qty+' \u00D7 '+money(r.perPart)+'</span><span>'+money(r.total)+'</span></div>'+
+  '<div class="totrow big"><span class="k">Total</span><span class="v">'+money(r.total)+'</span></div>'+
+  '</div></div>'+
+  '<div class="terms">'+
+  '<div><div class="k">Terms</div><div class="v">'+esc(S2.terms||'Net 30')+'</div></div>'+
+  (S2.leadDays?'<div><div class="k">Lead time</div><div class="v">'+esc(S2.leadDays)+' days ARO</div></div>':'')+
+  '<div><div class="k">Valid through</div><div class="v">'+fmtd(valid)+'</div></div></div>'+
+  '<div class="foot">Pricing is firm for the quantity shown. Changes to quantity, material, revision level, '+
+  'or finish requirements may affect price.</div>'+
+  '</div></body></html>';
+}
+
+/* == internal record == */
+function intDoc(q){
+  var r=q.job._r, d=new Date(q.date);
+  var srcLine = q.mode==='ops' ? 'Per-operation breakdown ('+q.ops.length+' ops)'
+    : q.mode==='total' ? 'Entered as total: '+Number(q.cycTot).toFixed(2)+' min/part'
+    : 'Entered as rate: '+q.pph+' parts/hour';
+  var row=function(k,v){return '<tr><td class="k">'+k+'</td><td class="v">'+v+'</td></tr>'};
+  var opsTbl = q.mode==='ops' && q.ops.length
+    ? '<table class="ops"><thead><tr><th>#</th><th>Operation</th><th class="r">Min/part</th></tr></thead><tbody>'+
+      q.ops.map(function(o,i){return '<tr><td>'+(i+1)+'</td><td>'+esc(o.description||'\u2014')+
+        '</td><td class="r">'+Number(o.time_min).toFixed(2)+'</td></tr>'}).join('')+
+      '<tr class="sum"><td></td><td>Total cycle</td><td class="r">'+r.cycle.toFixed(2)+'</td></tr></tbody></table>'
+    : '<p class="none">No per-operation breakdown \u2014 cycle time was entered directly.</p>';
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>INTERNAL \u00B7 '+esc(q.part)+'</title>'+
+  '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">'+
+  '<style>'+
+  '*{box-sizing:border-box}'+
+  'body{margin:0;background:#F2F2F4;color:#1A1A1D;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;padding:30px 18px}'+
+  '.sheet{max-width:720px;margin:0 auto;background:#fff;padding:36px 40px;box-shadow:0 1px 3px rgba(0,0,0,.09);border-top:4px solid #1A1A1D}'+
+  '.band{background:#1A1A1D;color:#fff;margin:-36px -40px 26px;padding:9px 40px;font-family:"Barlow Condensed",sans-serif;'+
+    'font-size:13px;letter-spacing:.24em;text-transform:uppercase;font-weight:600}'+
+  '.band span{color:#A855F7}'+
+  '.h{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:6px}'+
+  '.pt{font-family:"Barlow Condensed",sans-serif;font-size:33px;font-weight:700;letter-spacing:.02em;line-height:1}'+
+  '.ps{font-size:10px;color:#71717A;margin-top:5px}'+
+  '.pp{text-align:right}'+
+  '.pp .k{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#9A9AA2}'+
+  '.pp .v{font-family:"Barlow Condensed",sans-serif;font-size:33px;font-weight:700;color:#9233E6;line-height:1}'+
+  '.pp .s{font-size:10px;color:#71717A}'+
+  'h2{font-family:"Barlow Condensed",sans-serif;font-size:12px;font-weight:600;letter-spacing:.2em;'+
+    'text-transform:uppercase;color:#9233E6;margin:26px 0 9px;padding-bottom:5px;border-bottom:1px solid #E0E0E4}'+
+  'table{width:100%;border-collapse:collapse}'+
+  'td,th{padding:6px 0;border-bottom:1px solid #EEEEF1;text-align:left;vertical-align:top}'+
+  'td.k{color:#71717A;width:44%}td.v{font-weight:500}'+
+  '.r{text-align:right}'+
+  'table.ops th{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#9A9AA2;border-bottom:1px solid #1A1A1D;font-weight:500}'+
+  'table.ops tr.sum td{border-top:1px solid #1A1A1D;border-bottom:none;font-weight:600;padding-top:8px}'+
+  '.none{color:#9A9AA2;font-size:11px}'+
+  '.calc{background:#FAFAFB;border:1px solid #E8E8EC;border-left:3px solid #9233E6;padding:14px 16px;margin-top:8px;line-height:1.9}'+
+  '.calc .l{display:flex;justify-content:space-between;gap:16px}'+
+  '.calc .l.t{border-top:1px solid #D8D8DE;margin-top:7px;padding-top:8px;font-weight:600}'+
+  '.warn{background:#FEF6E7;border:1px solid #F0D9A8;border-left:3px solid #F0B429;padding:11px 14px;'+
+    'font-size:11px;line-height:1.6;margin-top:8px}'+
+  '.foot{margin-top:28px;padding-top:14px;border-top:1px solid #E0E0E4;font-size:9px;color:#9A9AA2;line-height:1.8}'+
+  '@media print{body{background:#fff;padding:0}.sheet{box-shadow:none;max-width:none}}'+
+  '</style></head><body><div class="sheet">'+
+  '<div class="band">Internal record <span>\u00B7 not for customer release</span></div>'+
+  '<div class="h"><div><div class="pt">'+esc(q.part)+'</div>'+
+  '<div class="ps">'+(q.customer?esc(q.customer)+' \u00B7 ':'')+d.toLocaleString('en-US')+' \u00B7 quote gen v'+esc(q.version)+'</div></div>'+
+  '<div class="pp"><div class="k">Per part</div><div class="v">'+money(r.perPart)+'</div>'+
+  '<div class="s">'+money(r.total)+' total</div></div></div>'+
+
+  '<h2>Job</h2><table>'+
+  row('Quantity',q.job.qty)+
+  row('Customer',esc(q.customer||'\u2014'))+
+  row('Material',esc(q.answers.material||'\u2014'))+
+  Object.keys(q.answers).filter(function(k){return k!=='material'&&k!=='customer'&&k!=='quantity'&&q.answers[k]})
+    .map(function(k){return row(esc(k),esc(q.answers[k]))}).join('')+
+  '</table>'+
+
+  '<h2>Cycle time</h2><p class="ps" style="margin:0 0 8px">'+esc(srcLine)+'</p>'+opsTbl+
+
+  '<h2>Rates &amp; inputs used</h2><table>'+
+  row('Billed rate','$'+q.rate+'/hr')+
+  row('Padding',q.job.padding+'%')+
+  row('Job prep',q.job.jobPrep+' min')+
+  row('Material',money(q.job.materialPerPart)+' / part')+
+  row('Job costs',money(q.job.jobCosts)+' / job')+
+  '</table>'+
+
+  '<h2>Calculation</h2><div class="calc">'+
+  '<div class="l"><span>Cycle '+r.cycle.toFixed(2)+' min'+(q.job.padding?' \u00D7 1.'+String(q.job.padding).padStart(2,'0')+' = '+r.padded.toFixed(2):'')+' min/part</span><span>'+r.padded.toFixed(2)+'</span></div>'+
+  '<div class="l"><span>\u00D7 '+q.job.qty+' parts</span><span>'+r.runMin.toFixed(1)+' min</span></div>'+
+  '<div class="l"><span>+ job prep</span><span>'+q.job.jobPrep+' min</span></div>'+
+  '<div class="l t"><span>Total shop time</span><span>'+r.totMin.toFixed(1)+' min \u00B7 '+r.hrs.toFixed(2)+' hr</span></div>'+
+  '<div class="l" style="margin-top:9px"><span>Labor '+r.hrs.toFixed(2)+' hr \u00D7 $'+q.rate+'</span><span>'+money(r.labor)+'</span></div>'+
+  '<div class="l"><span>Material '+money(q.job.materialPerPart)+' \u00D7 '+q.job.qty+'</span><span>'+money(r.mat)+'</span></div>'+
+  '<div class="l"><span>Job costs</span><span>'+money(q.job.jobCosts)+'</span></div>'+
+  '<div class="l t"><span>Quoted total</span><span>'+money(r.total)+'</span></div>'+
+  '<div class="l"><span>Per part</span><span>'+money(r.perPart)+'</span></div></div>'+
+
+  '<h2>Basis &amp; risk</h2>'+
+  '<div class="warn"><b>Cycle times are estimates, not a time study.</b> '+
+  (q.mode==='ops'&&!q.manual?'Operations were proposed by reading the print and may not reflect actual setup or tooling. ':'')+
+  'Break-even is $'+q.rate+'/hr; anything under that on actual hours is money lost. '+
+  'Record actuals against this quote when the job closes.</div>'+
+  (q.notes?'<div class="warn" style="background:#F7F7F8;border-color:#E0E0E4;border-left-color:#9A9AA2">'+esc(q.notes)+'</div>':'')+
+
+  '<div class="foot">Generated by Stealth R&amp;D Quote Generator v'+esc(q.version)+' \u00B7 record id '+esc(q.id)+
+  '<br>Internal cost basis. Do not send to customers.</div>'+
+  '</div></body></html>';
+}
+
+/* == history == */
+function rHistory(){
+  var p=$('p-history');
+  if(!quotes.length){p.innerHTML='<div class="empty">No saved quotes yet.</div>';return}
+  p.innerHTML='<p class="eyebrow">Saved quotes</p>'+
+    '<div class="btns" style="margin:0 0 16px"><button class="act ghost sm" id="csv">Export CSV</button>'+
+    '<span class="hint" style="align-self:center;margin:0">'+quotes.length+' stored in this browser'+
+    (dirHandle?' \u00B7 files \u2192 '+esc(dirHandle.name):'')+'</span></div>'+
+    quotes.map(function(q){
+      var r=(q.job&&q.job._r)||{};
+      return '<div class="qrow" data-id="'+q.id+'"><div class="r">'+
+        '<span class="nm">'+esc(q.part)+'</span>'+
+        '<span class="tot">'+(r.perPart!=null?money(r.perPart):'\u2014')+'/pc</span></div>'+
+        '<div class="mt">'+new Date(q.date).toLocaleDateString()+' \u00B7 qty '+q.job.qty+
+        ' \u00B7 '+(r.total!=null?money(r.total):'\u2014')+
+        (q.customer?' \u00B7 '+esc(q.customer):'')+
+        ' <span class="tag">'+(q.kind==='customer'?'sent':'internal')+'</span>'+
+        (q.actuals?' <span class="tag" style="color:var(--pass);border-color:var(--pass)">actuals</span>':'')+
+        '</div>'+(openId===q.id?hDetail(q):'')+'</div>';
+    }).join('');
+
+  on('csv','click',function(e){e.stopPropagation();expCsv()});
+  document.querySelectorAll('.qrow').forEach(function(el){
+    el.addEventListener('click',function(e){
+      if(e.target.closest('button')||e.target.closest('input'))return;
+      openId=openId===el.dataset.id?null:el.dataset.id;rHistory()})});
+  document.querySelectorAll('[data-del]').forEach(function(b){
+    b.addEventListener('click',function(e){e.stopPropagation();
+      quotes=quotes.filter(function(q){return q.id!==b.dataset.del});saveQ();rHistory()})});
+  document.querySelectorAll('[data-re]').forEach(function(b){
+    b.addEventListener('click',function(e){e.stopPropagation();
+      var q=quotes.find(function(x){return x.id===b.dataset.re});
+      var k=b.dataset.k, nm='QUOTE_'+slug(q.part)+'_'+stamp(new Date(q.date))+(k==='internal'?'_INTERNAL':'')+'.html';
+      putFile(nm,k==='customer'?custDoc(q):intDoc(q)).then(function(res){
+        toast(res.method==='folder'?('Saved to '+dirHandle.name+' / '+nm):('Downloaded '+nm))})})});
+  document.querySelectorAll('[data-act]').forEach(function(b){
+    b.addEventListener('click',function(e){e.stopPropagation();
+      var q=quotes.find(function(x){return x.id===b.dataset.act}),id=b.dataset.act;
+      var ap=num('aP-'+id,0),ah=num('aH-'+id,0),ac=num('aC-'+id,0);
+      q.actuals={price:ap,hours:ah,costs:ac,hoursVar:ah-q.job._r.hrs,
+        realRate:ah>0?((ap*q.job.qty)-ac)/ah:0};
+      saveQ();rHistory()})});
+}
+
+function hDetail(q){
+  var r=q.job._r;
+  var cyc = q.mode==='ops'
+    ? '<table><thead><tr><th>#</th><th>Operation</th><th class="n">Min</th></tr></thead><tbody>'+
+      q.ops.map(function(o,i){return '<tr><td style="color:var(--ink-faint)">'+(i+1)+'</td><td>'+esc(o.description||'\u2014')+
+      '</td><td class="n">'+Number(o.time_min).toFixed(2)+'</td></tr>'}).join('')+'</tbody></table>'
+    : '<p class="hint" style="margin:0">'+(q.mode==='total'
+        ? 'Total entered: <b style="color:var(--ink)">'+Number(q.cycTot).toFixed(2)+' min/part</b>'
+        : 'Rate entered: <b style="color:var(--ink)">'+q.pph+' parts/hour</b> ('+r.cycle.toFixed(2)+' min/part)')+'</p>';
+  return '<div class="detail">'+cyc+
+    '<p class="hint">'+r.cycle.toFixed(2)+' min/pc \u00B7 '+r.hrs.toFixed(2)+' job hr @ $'+q.rate+
+    '/hr \u00B7 prep '+q.job.jobPrep+' min \u00B7 pad '+q.job.padding+'% \u00B7 material '+money(q.job.materialPerPart)+
+    '/pc \u00B7 job costs '+money(q.job.jobCosts)+'</p>'+
+    '<div class="btns" style="margin-top:12px">'+
+    '<button class="act ghost sm" data-re="'+q.id+'" data-k="customer">Customer sheet</button>'+
+    '<button class="act ghost sm" data-re="'+q.id+'" data-k="internal">Internal record</button></div>'+
+    '<div class="sep"></div><p class="eyebrow">Actuals</p><div class="grid g3">'+
+    '<div class="fld"><label>PO price ($/part)</label><input type="number" step="0.01" id="aP-'+q.id+'" value="'+(q.actuals?q.actuals.price:r.perPart.toFixed(2))+'"></div>'+
+    '<div class="fld"><label>Hours spent</label><input type="number" step="0.1" id="aH-'+q.id+'" value="'+(q.actuals?q.actuals.hours:'')+'"></div>'+
+    '<div class="fld"><label>Actual costs ($)</label><input type="number" step="1" id="aC-'+q.id+'" value="'+(q.actuals?q.actuals.costs:(q.job.jobCosts+q.job.materialPerPart*q.job.qty).toFixed(2))+'"></div></div>'+
+    '<div class="btns" style="margin-top:0"><button class="act sm" data-act="'+q.id+'">Save actuals</button>'+
+    '<button class="act ghost sm" data-del="'+q.id+'" style="color:var(--fail);border-color:var(--fail)">Delete</button></div>'+
+    (q.actuals?'<div class="price" style="margin-top:16px"><div class="top"><div class="k">Real $/hour</div>'+
+      '<div class="v" style="color:'+(q.actuals.realRate>=q.rate?'var(--pass)':'var(--fail)')+'">'+money(q.actuals.realRate)+'</div>'+
+      '<div class="sub">quoted at $'+q.rate+'/hr \u00B7 '+(q.actuals.hoursVar>=0?'+':'')+q.actuals.hoursVar.toFixed(2)+' hr vs estimate</div></div></div>':'')+
+    '</div>';
+}
+
+/* == csv == */
+function cell(v){var s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function expCsv(){
+  var H=['Date','Part','Customer','Kind','Qty','Cycle entry','Operations','Cycle min/pc','Padding %',
+    'Job prep min','Material $/pc','Job costs $','Billed rate','Job hours','Total $','Per part $',
+    'Actual PO $/pc','Actual hours','Actual costs $','Hours vs quote','Real $/hr'];
+  var rows=quotes.map(function(q){
+    var r=q.job._r||{},j=q.job,a=q.actuals||{};
+    return [new Date(q.date).toLocaleDateString(),q.part,q.customer||'',q.kind||'',j.qty,
+      q.mode==='ops'?'per operation':q.mode==='total'?'total per part':'parts per hour',
+      q.mode==='ops'?q.ops.map(function(o){return o.description+' ('+Number(o.time_min).toFixed(2)+'m)'}).join(' | ')
+        :q.mode==='total'?q.cycTot+' min/part':q.pph+' parts/hr',
+      r.cycle!=null?r.cycle.toFixed(2):'',j.padding,j.jobPrep,j.materialPerPart,j.jobCosts,q.rate,
+      r.hrs!=null?r.hrs.toFixed(2):'',r.total!=null?r.total.toFixed(2):'',r.perPart!=null?r.perPart.toFixed(2):'',
+      a.price!=null?a.price:'',a.hours!=null?a.hours:'',a.costs!=null?a.costs:'',
+      a.hoursVar!=null?a.hoursVar.toFixed(2):'',a.realRate!=null?a.realRate.toFixed(2):''
+    ].map(cell).join(',')});
+  var csv=H.map(cell).join(',')+'\n'+rows.join('\n');
+  putFile('quote-log-'+stamp(new Date())+'.csv',csv).then(function(res){
+    toast(res.method==='folder'?('Saved to '+dirHandle.name):'Downloaded quote log')});
+}
+
+/* == boot == */
+$('hVer').textContent='v'+VERSION;
+try{var s=LS.get('settings'); if(s)S=Object.assign(S,JSON.parse(s))}catch(e){}
+try{var qq=LS.get('quotes'); if(qq)quotes=JSON.parse(qq)}catch(e){}
+rHead();
+loadDir().then(function(){rQuote()}).catch(function(){rQuote()});
+})();
+</script>
