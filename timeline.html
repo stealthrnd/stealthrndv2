@@ -1,0 +1,472 @@
+<meta charset="utf-8">
+<!-- TIMELINE.HTML — loads inside terminal.html's Timeline station. Version in APP_VERSION below. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<title>Timeline — Stealth R&amp;D</title>
+
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --purple:#9233E6; --purple-lift:#A855F7; --purple-deep:#6B21C4;
+    --purple-tint:rgba(146,51,230,.11);
+    --silver:#CCCCCC;
+    --bg:#232327; --panel:#2C2C31; --raised:#35353B; --sunken:#060606;
+    --line:#43434B; --line-hot:#54545E;
+    --ink:#F4F4F6; --dim:#A6A6B2; --faint:#7C7C88;
+    --pass:#4ADE80; --warn:#F0B429; --fail:#F87171;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --disp:'Barlow Condensed','Oswald',system-ui,sans-serif;
+    /* playing-card face — deliberately solid, never see-through */
+    --card-face:#31313A;
+    --card-face-2:#282830;
+    --card-edge:#4E4E5A;
+  }
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:13px;
+       -webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;overflow:hidden}
+
+  /* ---------- top bar ---------- */
+  .bar{flex-shrink:0;display:flex;align-items:center;gap:14px;padding:11px 16px;
+       border-bottom:1px solid var(--line);background:var(--panel)}
+  .bar .t{font-family:var(--disp);font-size:14px;font-weight:700;letter-spacing:.18em;
+          text-transform:uppercase;color:var(--silver)}
+  .bar .t span{color:var(--purple-lift)}
+  .bar .hint{font-size:10px;color:var(--faint);letter-spacing:.03em}
+  .bar .right{margin-left:auto;display:flex;align-items:center;gap:11px}
+  .bar .stat{font-size:10px;color:var(--dim);letter-spacing:.06em}
+  .bar .stat b{color:var(--ink);font-weight:500}
+  .bar button.mini{background:var(--sunken);border:1px solid var(--line);color:var(--dim);
+       font-family:var(--mono);font-size:10px;padding:5px 10px;border-radius:2px;cursor:pointer}
+  .bar button.mini:hover{border-color:var(--purple);color:var(--purple-lift)}
+
+  /* ---------- center flow ---------- */
+  .flow{position:relative;flex:1;display:flex;padding:0 12px;min-height:0;overflow:hidden}
+  .flow::before{content:'';position:absolute;left:24px;right:24px;top:50%;height:2px;z-index:0;
+    transform:translateY(-1px);opacity:.8;
+    background:linear-gradient(90deg,var(--line) 0%,var(--line) 10%,var(--purple) 50%,var(--line) 90%,var(--line) 100%)}
+  .lane{flex:1;position:relative}
+
+  .node{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;
+        background:none;border:none;cursor:pointer;display:flex;flex-direction:column;
+        align-items:center;gap:7px;padding:9px}
+  .node .dot{width:19px;height:19px;border-radius:50%;background:var(--sunken);
+             border:2px solid var(--line);transition:all .18s}
+  .node.peek .dot{border-color:var(--purple-lift);transform:scale(1.14);
+                  box-shadow:0 0 13px rgba(168,85,247,.45)}
+  .node.on .dot{border-color:var(--purple);background:var(--purple);
+                box-shadow:0 0 15px rgba(146,51,230,.6)}
+  .node .lbl{font-family:var(--disp);font-size:11px;letter-spacing:.11em;
+             text-transform:uppercase;color:var(--faint);white-space:nowrap}
+  .node.on .lbl,.node.peek .lbl{color:var(--purple-lift)}
+  .node .cnt{font-size:10px;color:var(--faint)}
+  .node .late{position:absolute;top:1px;right:1px;width:9px;height:9px;border-radius:50%;
+              background:var(--fail);box-shadow:0 0 8px rgba(248,113,113,.7)}
+
+  .fanUp,.fanDown{position:absolute;left:50%;z-index:2}
+  .fanUp{bottom:calc(50% + 30px)}
+  .fanDown{top:calc(50% + 30px)}
+  .laneempty{position:absolute;left:50%;transform:translateX(-50%);font-size:10px;
+             color:var(--faint);white-space:nowrap}
+  .fanUp .laneempty{bottom:calc(50% + 34px)}
+  .fanDown .laneempty{top:calc(50% + 34px)}
+
+  /* ---------- the playing card ---------- */
+  .card{
+    position:absolute;left:50%;width:172px;
+    background:linear-gradient(160deg,var(--card-face) 0%,var(--card-face-2) 100%);
+    border:1px solid var(--card-edge);border-radius:9px;
+    padding:0;opacity:0;pointer-events:none;cursor:pointer;overflow:hidden;
+    box-shadow:0 12px 26px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.05);
+    transition:transform .38s cubic-bezier(.2,.8,.2,1),opacity .26s,box-shadow .18s,border-color .18s;
+  }
+  .fanUp .card{bottom:0;transform-origin:bottom center;transform:translate(-50%,0) scale(.72)}
+  .fanDown .card{top:0;transform-origin:top center;transform:translate(-50%,0) scale(.72)}
+  .card.show{opacity:1;pointer-events:auto}
+  .card.focus{border-color:var(--purple-lift);box-shadow:0 16px 32px rgba(146,51,230,.4)}
+  .card.dragging{opacity:.35}
+
+  /* thin inner rule, like a card border print */
+  .card .inner{margin:5px;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:9px 10px 10px}
+
+  /* corner index, like a rank/suit */
+  .card .idx{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px}
+  .card .wo{font-family:var(--disp);font-size:15px;font-weight:700;letter-spacing:.06em;
+            color:var(--purple-lift);line-height:1}
+  .card .suit{font-family:var(--disp);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+              color:var(--faint);border:1px solid var(--line);border-radius:2px;padding:1px 5px;
+              white-space:nowrap}
+
+  .card .part{font-family:var(--disp);font-size:19px;font-weight:700;letter-spacing:.02em;
+              color:var(--ink);line-height:1.1;word-break:break-word}
+  .card .rev{font-size:9px;color:var(--faint);letter-spacing:.08em;margin-top:2px;text-transform:uppercase}
+
+  .card .specs{margin-top:9px;border-top:1px solid rgba(255,255,255,.07);padding-top:7px}
+  .card .spec{display:flex;justify-content:space-between;gap:8px;font-size:10px;padding:2px 0}
+  .card .spec .k{color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+  .card .spec .v{color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;
+                 word-break:break-word}
+
+  .card .flags{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+  .flag{font-size:8px;letter-spacing:.06em;padding:2px 5px;border-radius:2px;
+        color:var(--faint);border:1px solid var(--line);white-space:nowrap}
+  .flag.late{color:var(--fail);border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.1)}
+  .flag.sib{color:var(--warn);border-color:rgba(240,180,41,.45);background:rgba(240,180,41,.1)}
+  .flag.inv{color:var(--pass);border-color:rgba(74,222,128,.45);background:rgba(74,222,128,.1)}
+
+  /* late cards get a red edge stripe, like a marked card */
+  .card.late::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--fail)}
+
+  /* ---------- expanded card (click) ---------- */
+  .scrim{position:fixed;inset:0;background:rgba(6,6,6,.72);z-index:60;opacity:0;
+         pointer-events:none;transition:opacity .22s}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .big{
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);z-index:61;
+    width:min(330px,calc(100vw - 36px));max-height:calc(100vh - 40px);overflow-y:auto;
+    background:linear-gradient(160deg,var(--card-face) 0%,var(--card-face-2) 100%);
+    border:1px solid var(--card-edge);border-radius:12px;
+    box-shadow:0 26px 60px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06);
+    opacity:0;pointer-events:none;transition:opacity .22s,transform .22s cubic-bezier(.2,.8,.2,1)}
+  .big.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  .big .inner{margin:7px;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:16px 17px 17px}
+  .big .wo{font-size:22px}
+  .big .part{font-size:26px}
+  .big .spec{font-size:11px;padding:4px 0}
+  .big .specs{margin-top:12px;padding-top:10px}
+  .big .close{position:absolute;top:12px;right:13px;z-index:2;background:none;border:none;
+              color:var(--faint);font-size:19px;line-height:1;cursor:pointer;padding:3px 6px}
+  .big .close:hover{color:var(--ink)}
+
+  .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:15px}
+  .act{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-decoration:none;
+       background:var(--sunken);border:1px solid var(--line);border-radius:5px;padding:10px 11px;
+       cursor:pointer;transition:border-color .16s,background .16s;font-family:var(--mono)}
+  .act:hover{border-color:var(--purple);background:var(--purple-tint)}
+  .act .an{font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.1em;
+           text-transform:uppercase;color:var(--purple-lift)}
+  .act .ad{font-size:9px;color:var(--faint);letter-spacing:.03em;line-height:1.3}
+  .act.wide{grid-column:1/-1}
+  .act.ghost .an{color:var(--dim)}
+
+  @media(max-width:700px){
+    .card{width:138px}
+    .card .part{font-size:16px}
+    .bar .hint{display:none}
+    .flow{padding:0 4px}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="bar">
+  <div class="t">Time<span>line</span></div>
+  <div class="hint">Hover to peek · click a stage to hold it open · click a card for detail</div>
+  <div class="right">
+    <div class="stat" id="sDemo" style="display:none;color:var(--warn);border:1px solid rgba(240,180,41,.4);border-radius:2px;padding:3px 7px;letter-spacing:.1em">DEMO DATA</div>
+    <div class="stat">OPEN <b id="sOpen">—</b></div>
+    <div class="stat">LATE <b id="sLate">—</b></div>
+    <button class="mini" id="btnAll">Open all</button>
+  </div>
+</div>
+
+<div class="flow" id="flow"></div>
+
+<div class="scrim" id="scrim"></div>
+<div class="big" id="big" role="dialog" aria-modal="true"></div>
+
+<script>
+(function(){
+  var APP_VERSION='v1.0';
+
+  // Stage lanes alternate fold direction so several can sit open without colliding.
+  var STAGES=[
+    {name:'Award',   dir:'up'},
+    {name:'Plan',    dir:'down'},
+    {name:'Machine', dir:'up'},
+    {name:'QC',      dir:'down'},
+    {name:'Pack',    dir:'up'},
+    {name:'Ship',    dir:'down'}
+  ];
+
+  // Sibling tools this card links out to. These live next to this file.
+  var QUOTE_TOOL='quote-generator.html';
+  var CLOCK_TOOL='shop_timeclock.html';
+
+  var flow=document.getElementById('flow');
+  var scrim=document.getElementById('scrim');
+  var bigEl=document.getElementById('big');
+
+  var openState={}, peekState={}, focusIdx={};
+  var CARDS=[], laneEls=[], nodeEls=[];
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+  // ---- WORK ORDER ------------------------------------------------
+  // Convention: XX-YYYY. XX = last two digits of the year the job was
+  // awarded; YYYY = a per-year counter that restarts at 0001 each January.
+  // Derived here from Trello's card id (its first 8 hex chars are a unix
+  // timestamp), so a card always renders the same number without needing
+  // anything stored — cards are numbered in the order they were created,
+  // counted within their own year.
+  function cardCreated(id){
+    if(!id||id.length<8) return null;
+    var ts=parseInt(id.substring(0,8),16);
+    if(!ts||isNaN(ts)) return null;
+    return new Date(ts*1000);
+  }
+  function assignWorkOrders(cards){
+    var dated=cards.filter(function(c){return c._created;});
+    dated.sort(function(a,b){return a._created-b._created;});
+    var perYear={};
+    dated.forEach(function(c){
+      var y=c._created.getFullYear();
+      perYear[y]=(perYear[y]||0)+1;
+      c.wo=String(y%100).padStart(2,'0')+'-'+String(perYear[y]).padStart(4,'0');
+    });
+    cards.forEach(function(c){ if(!c.wo) c.wo='\u2014'; });
+  }
+
+  function isLate(c){ return !!c.active && c.days!=null && c.days<0; }
+  function siblings(c){
+    if(!c.po) return 0;
+    return CARDS.filter(function(x){return x.po===c.po && x.stage!==c.stage;}).length;
+  }
+  function dueText(c){
+    if(c.days==null) return c.active?'no date':'\u2014';
+    if(c.days<0) return Math.abs(c.days)+'d over';
+    if(c.days===0) return 'today';
+    return 'in '+c.days+'d';
+  }
+
+  // ---- CARD FACE -------------------------------------------------
+  function cardFaceHTML(c,big,extra){
+    var flags='';
+    if(isLate(c)) flags+='<span class="flag late">'+Math.abs(c.days)+'D LATE</span>';
+    var sib=siblings(c);
+    if(sib) flags+='<span class="flag sib">+'+sib+' ON PO</span>';
+    if(c.invoice) flags+='<span class="flag inv">INV '+esc(c.invoice)+'</span>';
+
+    var specs=
+      spec('PO', c.po?('PO '+esc(c.po)):'\u2014')+
+      spec('Qty', c.qty!=null?esc(c.qty):'\u2014')+
+      spec('Due', esc(dueText(c)));
+    if(big){
+      specs+=spec('Customer', esc(c.customer||'\u2014'))+
+             spec('Stage', esc(STAGES[c.stage-1]?STAGES[c.stage-1].name:(c.list||'\u2014')));
+      if(c.time!=null) specs+=spec('Time', esc(c.time)+' hrs');
+      if(c.op1) specs+=spec('OP1', esc(c.op1));
+    }
+
+    return ''+
+      '<div class="inner">'+
+        '<div class="idx">'+
+          '<div class="wo">'+esc(c.wo)+'</div>'+
+          '<div class="suit">'+esc(c.customer||'\u2014')+'</div>'+
+        '</div>'+
+        '<div class="part">'+esc(c.part||c.name||'\u2014')+'</div>'+
+        '<div class="rev">REV '+esc(c.rev||'\u2014')+'</div>'+
+        '<div class="specs">'+specs+'</div>'+
+        (flags?'<div class="flags">'+flags+'</div>':'')+
+        (extra||'')+
+      '</div>';
+  }
+  function spec(k,v){
+    return '<div class="spec"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>';
+  }
+
+  // ---- EXPANDED CARD ---------------------------------------------
+  function openBig(c){
+    var q=encodeURIComponent(c.part||'');
+    var acts=
+      '<a class="act" href="'+QUOTE_TOOL+'?part='+q+'" target="_blank" rel="noopener">'+
+        '<span class="an">Quote</span><span class="ad">Open this part in the quote generator</span></a>'+
+      '<a class="act" href="'+CLOCK_TOOL+'?part='+q+'" target="_blank" rel="noopener">'+
+        '<span class="an">Time clock</span><span class="ad">Run the sheet for this part</span></a>';
+    if(c.url){
+      acts+='<a class="act wide ghost" href="'+esc(c.url)+'" target="_blank" rel="noopener">'+
+        '<span class="an">Open in Trello</span><span class="ad">Move the card, edit the description</span></a>';
+    }
+
+    bigEl.innerHTML='<button class="close" aria-label="Close">\u00d7</button>'+
+      cardFaceHTML(c,true,'<div class="acts">'+acts+'</div>');
+    bigEl.classList.add('open');
+    scrim.classList.add('open');
+    bigEl.querySelector('.close').onclick=closeBig;
+  }
+  function closeBig(){ bigEl.classList.remove('open'); scrim.classList.remove('open'); }
+  scrim.addEventListener('click',closeBig);
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeBig(); });
+
+  // ---- LANES -----------------------------------------------------
+  STAGES.forEach(function(s,i){
+    var lane=document.createElement('div');
+    lane.className='lane';
+    lane.innerHTML='<button class="node"></button><div class="fanUp"></div><div class="fanDown"></div>';
+    flow.appendChild(lane);
+    laneEls.push(lane);
+    var node=lane.querySelector('.node');
+    nodeEls.push(node);
+
+    node.addEventListener('click',function(){ openState[i]=!openState[i]; renderLane(i); });
+    lane.addEventListener('mouseenter',function(){ peekState[i]=true; renderLane(i); });
+    lane.addEventListener('mouseleave',function(){ peekState[i]=false; renderLane(i); });
+    lane.addEventListener('wheel',function(e){
+      var n=CARDS.filter(function(c){return c.stage===i+1;}).length;
+      if(n<2) return;
+      e.preventDefault();
+      focusIdx[i]=(((focusIdx[i]||0)+(e.deltaY>0?1:-1))%n+n)%n;
+      renderLane(i);
+    },{passive:false});
+  });
+
+  function renderLane(i){
+    var s=STAGES[i], lane=laneEls[i], node=nodeEls[i];
+    var cards=CARDS.filter(function(c){return c.stage===i+1;});
+    var late=cards.filter(isLate).length;
+
+    node.className='node'+(openState[i]?' on':'')+(peekState[i]&&!openState[i]?' peek':'');
+    node.innerHTML=
+      (late?'<span class="late"></span>':'')+
+      '<span class="lbl">'+s.name+'</span>'+
+      '<span class="dot"></span>'+
+      '<span class="cnt">'+cards.length+'</span>';
+
+    var up=lane.querySelector('.fanUp'), down=lane.querySelector('.fanDown');
+    up.innerHTML=''; down.innerHTML='';
+    var host=(s.dir==='up')?up:down;
+
+    var active=openState[i]||peekState[i];
+    if(!active) return;
+
+    if(!cards.length){
+      var e=document.createElement('div');
+      e.className='laneempty'; e.textContent='No cards.';
+      host.appendChild(e);
+      return;
+    }
+
+    // Peek is a smaller version of the same fan; full open is the real spread.
+    // Never drops below 0.85 opacity — cards stay solid and readable either way.
+    var reveal=openState[i]?1:0.5;
+    var n=cards.length, mid=(n-1)/2;
+    var fi=((focusIdx[i]||0)%n+n)%n;
+
+    // With a big hand, tighten the spacing and widen the arc so it still fits.
+    var spread=n>5?52:66;
+    var lift=n>5?26:32;
+
+    cards.forEach(function(c,idx){
+      var elc=document.createElement('div');
+      var isFocus=(n>1&&idx===fi);
+      elc.className='card'+(isLate(c)?' late':'')+(isFocus?' focus':'');
+      elc.style.zIndex=isFocus?50:(10+idx);
+      elc.innerHTML=cardFaceHTML(c,false);
+      elc.addEventListener('click',function(ev){ ev.stopPropagation(); openBig(c); });
+      host.appendChild(elc);
+
+      var offset=idx-mid;
+      var tx=offset*spread*reveal;
+      var mag=(lift+Math.abs(offset)*11)*reveal;
+      var ty=(s.dir==='up')?-mag:mag;
+      var rot=(isFocus?offset*3:offset*6)*reveal;
+      var scale=(openState[i]?1:0.9)*(isFocus?1.08:1);
+
+      setTimeout((function(elc,tx,ty,rot,scale,idx){
+        return function(){
+          elc.style.transitionDelay=(idx*26)+'ms';
+          elc.style.transform='translate(calc(-50% + '+tx+'px), '+ty+'px) rotate('+rot+'deg) scale('+scale+')';
+          elc.style.opacity=openState[i]?'1':'0.92';
+          elc.classList.add('show');
+        };
+      })(elc,tx,ty,rot,scale,idx),20);
+    });
+  }
+
+  function renderAll(){ STAGES.forEach(function(s,i){ renderLane(i); }); }
+
+  document.getElementById('btnAll').addEventListener('click',function(){
+    var anyClosed=STAGES.some(function(s,i){return !openState[i];});
+    STAGES.forEach(function(s,i){ openState[i]=anyClosed; });
+    this.textContent=anyClosed?'Close all':'Open all';
+    renderAll();
+  });
+
+  // ---- DEMO DATA -------------------------------------------------
+  // Used only when /api/trello can't be reached (opening this file
+  // directly, or before deploy). Same field shape the real API returns,
+  // so nothing downstream needs to know the difference.
+  function demoCards(){
+    var parts=[
+      ['100844','ROBERTS','15902','B',40],['100849','ROBERTS','15902','B',40],
+      ['100846','ROBERTS','15902','A',40],['100101','ROBERTS','15935','C',8],
+      ['100151','ROBERTS','15935','C',8],['TRAM_G2-01046','FTI','266677','A',12],
+      ['BRKT-9','FTI','266550','D',20],['SLV-2207','FTI','266612','A',30],
+      ['PIN-4410','ROBERTS','15948','B',150],['HSG-1180','FTI','266701','B',6],
+      ['CLP-3302','ROBERTS','15951','A',75],['MNT-0074','FTI','266688','C',18],
+      ['SPCR-119','ROBERTS','15944','A',200],['ADPT-556','FTI','266720','B',10],
+      ['ROD-8821','ROBERTS','15960','A',24],['CAM-0453','FTI','266733','E',4],
+      ['BSHG-207','ROBERTS','15955','B',90],['FLNG-330','FTI','266742','A',14],
+      ['KEY-1102','ROBERTS','15962','C',60],['GDE-7789','FTI','266750','B',22]
+    ];
+    var now=Math.floor(Date.now()/1000);
+    return parts.map(function(p,i){
+      var stage=1+Math.floor(Math.random()*6);
+      var days;
+      if(Math.random()<0.25) days=-(2+Math.floor(Math.random()*24));   // late
+      else if(Math.random()<0.4) days=Math.floor(Math.random()*7);      // due this week
+      else days=8+Math.floor(Math.random()*30);
+      var shipped=(stage===6);
+      // spread creation times across this year and last, so work orders
+      // exercise both the per-year counter and the year rollover
+      var created=now-Math.floor(Math.random()*400*86400);
+      return {
+        id:created.toString(16)+'0000000000000000'.substring(0,16),
+        part:p[0], name:p[0]+' \u2014 PO '+p[2], customer:p[1], po:p[2], rev:p[3], qty:p[4],
+        stage:stage, list:STAGES[stage-1].name, days:days,
+        active:!shipped, shipped:shipped,
+        invoice:(shipped&&Math.random()<0.6)?String(1053+i):null,
+        time:(stage>=3)?(Math.random()*14+1).toFixed(2):null,
+        op1:(stage>=3)?(Math.floor(Math.random()*p[4])+'/'+p[4]):null,
+        url:null
+      };
+    });
+  }
+
+  // ---- LOAD ------------------------------------------------------
+  function ingest(cards,demo){
+    CARDS=cards.map(function(c){
+      var o={};
+      for(var k in c) if(Object.prototype.hasOwnProperty.call(c,k)) o[k]=c[k];
+      o._created=cardCreated(c.id);
+      return o;
+    });
+    assignWorkOrders(CARDS);
+    document.getElementById('sOpen').textContent=
+      CARDS.filter(function(c){return c.active;}).length;
+    document.getElementById('sLate').textContent=
+      CARDS.filter(isLate).length;
+    var badge=document.getElementById('sDemo');
+    badge.style.display=demo?'':'none';
+    renderAll();
+  }
+
+  function load(){
+    return fetch('/api/trello',{credentials:'same-origin'})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(function(d){
+        if(d.error) throw new Error(d.error);
+        if(!d.cards||!d.cards.length) throw new Error('no cards');
+        ingest(d.cards,false);
+      })
+      .catch(function(){
+        // Board not reachable — fall back to demo cards rather than a dead screen.
+        if(!CARDS.length) ingest(demoCards(),true);
+      });
+  }
+
+  load();
+  setInterval(load,120000);   // same 2-minute cadence as the terminal shell
+})();
+</script>
