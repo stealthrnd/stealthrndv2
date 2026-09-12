@@ -1,0 +1,2341 @@
+<meta charset="utf-8">
+<!-- TIMELINE.HTML — loads inside terminal.html's Timeline station. Version in APP_VERSION below. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<title>Timeline — Stealth R&amp;D</title>
+
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --purple:#9233E6; --purple-lift:#A855F7; --purple-deep:#6B21C4;
+    --purple-tint:rgba(146,51,230,.10);
+    --white:#FFFFFF; --silver:#CCCCCC;
+    --bg:#232327; --panel:#2C2C31; --raised:#35353B; --sunken:#060606;
+    --line:#43434B; --line-hot:#54545E;
+    --ink:#F4F4F6; --dim:#A6A6B2; --faint:#7C7C88;
+    --pass:#4ADE80; --warn:#F0B429; --fail:#F87171;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --disp:'Barlow Condensed','Oswald',system-ui,sans-serif;
+    /* card stock */
+    --frame:#1A1A1F; --frame-2:#0E0E12;
+    --face:#33333C; --face-2:#26262D;
+    --rule:rgba(255,255,255,.11);
+    --off:#2B2B32; --off-2:#212126;
+  }
+  html,body{height:100%}
+  /* transparent: this file runs inside terminal.html's iframe and the dither canvas
+     lives behind it. Standalone it falls back to --bg via the html rule below. */
+  html{background:transparent}
+  body{margin:0;background:transparent;color:var(--ink);font-family:var(--mono);font-size:13px;
+       -webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;overflow:hidden}
+
+  /* ---------- top bar ---------- */
+  .bar{flex-shrink:0;display:flex;align-items:center;gap:11px;padding:8px 12px;
+       border-bottom:1px solid var(--line);background:rgba(35,35,39,.72);
+       backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);flex-wrap:wrap}
+  .bar .t{font-family:var(--disp);font-size:14px;font-weight:700;letter-spacing:.18em;
+          text-transform:uppercase;color:var(--white)}
+  .bar .t span{color:var(--purple-lift)}
+  .toggle{display:flex;background:var(--sunken);border:1px solid var(--line);overflow:hidden}
+  .toggle button{background:none;border:none;color:var(--faint);font-family:var(--disp);
+          font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+          padding:7px 14px;cursor:pointer;transition:all .15s}
+  .toggle button.on{background:var(--purple);color:var(--white)}
+  .searchbtn{flex:1;max-width:230px;display:flex;align-items:center;gap:8px;background:var(--sunken);
+    border:1px solid var(--line);color:var(--faint);font-family:var(--mono);font-size:11px;
+    padding:7px 11px;cursor:pointer;text-align:left}
+  .searchbtn:hover{border-color:var(--purple);color:var(--dim)}
+  .searchbtn kbd{margin-left:auto;font-family:var(--mono);font-size:9px;border:1px solid var(--line);
+    padding:1px 4px;color:var(--faint)}
+  .bar .right{margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .stat{font-size:10px;color:var(--dim);letter-spacing:.06em;white-space:nowrap}
+  .stat b{color:var(--white);font-weight:500}
+  .stat.demo{color:var(--warn);border:1px solid rgba(240,180,41,.4);padding:3px 7px}
+  select.role,button.mini{background:var(--sunken);border:1px solid var(--line);color:var(--dim);
+       font-family:var(--mono);font-size:10px;padding:5px 9px;cursor:pointer}
+  select.role:focus{outline:none;border-color:var(--purple)}
+  button.mini:hover{border-color:var(--purple);color:var(--purple-lift)}
+  .help{margin-left:2px;width:17px;height:17px;flex-shrink:0;border:1px solid var(--line);
+    background:none;color:var(--faint);font-family:var(--mono);font-size:10px;line-height:1;
+    cursor:help;border-radius:50%;padding:0}
+  .help:hover{border-color:var(--purple);color:var(--purple-lift)}
+
+  .screen{flex:1;min-height:0;display:none}
+  .screen.on{display:flex}
+
+  /* ---------- TIMELINE ---------- */
+  #scTimeline{flex-direction:column}
+  .flow{position:relative;flex:1;display:flex;padding:0 6px;min-height:0;overflow:hidden;touch-action:pan-y}
+  .flow::before{content:'';position:absolute;left:24px;right:24px;top:50%;height:1px;z-index:0;
+    background:linear-gradient(90deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,.34) 14%,
+      var(--purple-lift) 50%,rgba(255,255,255,.34) 86%,rgba(255,255,255,.10) 100%)}
+  .flow::after{content:'';position:absolute;left:24px;right:24px;top:50%;height:5px;z-index:0;
+    transform:translateY(-2px);opacity:.32;filter:blur(4px);
+    background:linear-gradient(90deg,transparent 20%,var(--purple) 50%,transparent 80%)}
+  .lane{flex:1;position:relative}
+
+  /* node sits above the cards and carries its own plate so nothing overlaps it */
+  .node{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:80;
+        background:none;border:none;cursor:pointer;display:flex;flex-direction:column;
+        align-items:center;gap:6px;padding:4px}
+  .node .plate{display:flex;align-items:center;gap:7px;background:rgba(20,20,22,.88);
+    border:1px solid var(--line);padding:3px 9px;white-space:nowrap;transition:all .16s}
+  .node.peek .plate,.node.on .plate{border-color:var(--white)}
+  .node .lbl{font-family:var(--disp);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+             color:var(--faint);transition:color .16s}
+  .node.on .lbl,.node.peek .lbl{color:var(--white)}
+  .node.mine .lbl{color:var(--pass)}
+  .node .cnt{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.06em;
+             border-left:1px solid var(--line);padding-left:7px;font-variant-numeric:tabular-nums}
+  .node .cnt.pos{color:var(--white)}
+  .node.on .cnt{color:var(--purple-lift)}
+  .node .dot{width:13px;height:13px;transform:rotate(45deg);background:var(--sunken);
+             border:1px solid rgba(255,255,255,.45);transition:all .16s}
+  .node.peek .dot{border-color:var(--white);background:var(--purple-deep)}
+  .node.on .dot{border-color:var(--white);background:var(--purple)}
+  .node.mine .dot{border-color:var(--pass)}
+  .node.mine.on .dot{background:var(--pass)}
+  .node .late{position:absolute;top:-2px;right:-2px;width:7px;height:7px;background:var(--fail);
+              transform:rotate(45deg)}
+
+  .fanUp,.fanDown{position:absolute;left:50%;z-index:2}
+  .fanUp{bottom:calc(50% + 34px)}
+  .fanDown{top:calc(50% + 34px)}
+  .laneempty{position:absolute;left:50%;transform:translateX(-50%);font-size:10px;
+             color:var(--faint);white-space:nowrap}
+  .fanUp .laneempty{bottom:calc(50% + 38px)}
+  .fanDown .laneempty{top:calc(50% + 38px)}
+
+  /* ---------- THE CARD (MTG frame) ---------- */
+  .card{position:absolute;left:50%;width:216px;
+    background:linear-gradient(160deg,var(--frame) 0%,var(--frame-2) 100%);
+    border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:5px;
+    opacity:0;pointer-events:none;cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.6);
+    transition:transform .34s cubic-bezier(.2,.8,.2,1),opacity .22s,border-color .16s}
+  .fanUp .card{bottom:0;transform-origin:bottom center;transform:translate(-50%,0) scale(.72)}
+  .fanDown .card{top:0;transform-origin:top center;transform:translate(-50%,0) scale(.72)}
+  .card.show{opacity:1;pointer-events:auto}
+  /* riffle: a short, flat-out transition with no stagger, used while scrolling or
+     sweeping the stack. GPU hints keep it off the main thread. */
+  .card{will-change:transform,opacity}
+  .card.riffle{transition:transform .16s cubic-bezier(.25,.9,.3,1),opacity .12s linear,
+    border-color .16s}
+  @media(prefers-reduced-motion:reduce){
+    .card,.card.riffle{transition:opacity .12s linear}
+  }
+  .card.focus{border-color:var(--purple-lift)}
+  .card.focus .plate2{border-color:var(--purple)}
+  .card.mine{border-color:rgba(74,222,128,.55)}
+  .card.hit{border-color:var(--warn)}
+  .plate2{border:1px solid var(--rule);border-radius:5px;overflow:hidden;
+          background:linear-gradient(160deg,var(--face) 0%,var(--face-2) 100%)}
+  .card.notmine .plate2{background:linear-gradient(160deg,var(--off) 0%,var(--off-2) 100%)}
+
+  /* title bar — part number left, work order right (the "cost") */
+  .tbar{display:flex;align-items:center;gap:6px;padding:6px 8px;
+        background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.02));
+        border-bottom:1px solid var(--rule)}
+  .tname{flex:1;min-width:0;font-family:var(--disp);font-size:18px;font-weight:700;
+         color:var(--white);line-height:1.05;letter-spacing:.01em;word-break:break-word}
+  .twо,.two{flex-shrink:0}
+  .two{font-family:var(--disp);font-size:12.5px;font-weight:700;letter-spacing:.08em;color:var(--white);
+       background:var(--purple);border:1px solid rgba(255,255,255,.35);padding:2px 6px;
+       transform:skewX(-10deg)}
+  .card.mine .two{background:var(--pass);color:var(--sunken)}
+
+  /* art window */
+  .art{position:relative;height:72px;margin:5px 6px;background:var(--sunken);
+       border:1px solid var(--rule);overflow:hidden;
+       background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 6px,transparent 6px 12px)}
+  .art i{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-style:normal;
+         font-family:var(--disp);font-size:8px;letter-spacing:.22em;color:var(--faint)}
+  .art img{width:100%;height:100%;object-fit:cover;display:block}
+
+  /* ---- photo / model switch ---- */
+  .artsw{position:absolute;right:4px;bottom:4px;display:flex;gap:2px;z-index:2;
+    background:rgba(6,6,6,.72);border:1px solid var(--rule);padding:1px}
+  .artsw button{background:none;border:none;color:var(--faint);cursor:pointer;
+    font-family:var(--disp);font-size:7.5px;letter-spacing:.12em;text-transform:uppercase;
+    padding:2px 5px;transition:all .14s}
+  .artsw button:hover{color:var(--white)}
+  .artsw button.on{background:var(--purple);color:var(--white)}
+  .sheet .artsw button{font-size:9.5px;padding:3px 9px}
+  .modelph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:4px}
+  .modelph svg{width:48%;max-width:110px;height:auto;opacity:.5}
+  .modelph svg path,.modelph svg circle{fill:none;stroke:var(--purple-lift);stroke-width:1.4;
+    vector-effect:non-scaling-stroke}
+  .modelph i{position:static;transform:none;font-style:normal;font-family:var(--disp);
+    font-size:7.5px;letter-spacing:.18em;color:var(--faint)}
+  .sheet .modelph i{font-size:9px}
+
+  /* type line — PO · CUSTOMER · STAGE, grouped as one identity strip */
+  .tline{margin:0 6px;padding:4px 7px;background:rgba(255,255,255,.05);
+         border:1px solid var(--rule);font-family:var(--disp);font-size:11px;letter-spacing:.1em;
+         text-transform:uppercase;color:var(--white);display:flex;gap:6px;align-items:center;
+         white-space:nowrap;overflow:hidden}
+  .tline b{font-weight:700;color:var(--purple-lift)}
+  .card.mine .tline b{color:var(--pass)}
+  .tline em{font-style:normal;color:var(--faint)}
+
+  /* text box — production block: qty, parts, time */
+  .tbox{margin:5px 6px 0;padding:6px 7px;background:rgba(0,0,0,.28);border:1px solid var(--rule);
+        min-height:52px}
+  .prow{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:2.5px 0}
+  .prow .k{color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+  .prow .v{color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+  .prow.clickable{cursor:pointer;margin:0 -3px;padding:1.5px 3px}
+  .prow.clickable:hover{background:var(--purple-tint)}
+  .prow.clickable .v{color:var(--purple-lift);border-bottom:1px dotted var(--purple)}
+  .bars{display:flex;height:4px;margin-top:6px;gap:1px;background:var(--sunken)}
+  .bars i{display:block;height:100%}
+
+  .flags{display:flex;gap:3px;flex-wrap:wrap;margin:5px 6px 0}
+  .flag{font-size:9px;letter-spacing:.07em;padding:1.5px 5px;color:var(--faint);
+        border:1px solid var(--line);white-space:nowrap}
+  .flag.late{color:var(--fail);border-color:rgba(248,113,113,.5)}
+  .flag.sib{color:var(--warn);border-color:rgba(240,180,41,.5)}
+  .flag.inv{color:var(--pass);border-color:rgba(74,222,128,.5)}
+  .flag.you{color:var(--pass);border-color:rgba(74,222,128,.6)}
+  .flag.run{color:var(--white);border-color:var(--purple);background:var(--purple-tint)}
+  .flag.qcok{color:var(--pass);border-color:rgba(74,222,128,.5)}
+  .flag.qcbad{color:var(--fail);border-color:rgba(248,113,113,.55)}
+  .flag.qcopen{color:var(--warn);border-color:rgba(240,180,41,.5)}
+
+  /* bottom bar — collector line left, qty box right (the "power/toughness") */
+  .bbar{display:flex;align-items:flex-end;justify-content:space-between;gap:6px;
+        margin:6px 6px 5px;padding-top:5px;border-top:1px solid var(--rule)}
+  .coll{font-size:9.5px;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;line-height:1.45}
+  .pt{font-family:var(--disp);font-size:15px;font-weight:700;color:var(--white);
+      background:var(--sunken);border:1px solid rgba(255,255,255,.3);padding:3px 9px;
+      white-space:nowrap;font-variant-numeric:tabular-nums}
+  .card.late .pt{border-color:rgba(248,113,113,.6);color:var(--fail)}
+
+  .mini-acts{display:none;gap:4px;margin:6px 6px 2px}
+  .card.focus .mini-acts{display:flex}
+  .mb{flex:1;background:var(--sunken);border:1px solid var(--line);color:var(--dim);
+      font-family:var(--disp);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+      padding:7px 3px;cursor:pointer;text-align:center;text-decoration:none;white-space:nowrap}
+  .mb:hover{border-color:var(--purple);color:var(--white)}
+  .mb.go{border-color:rgba(74,222,128,.45);color:var(--pass)}
+  .mb.stop{border-color:rgba(248,113,113,.45);color:var(--fail)}
+  .mb.live{border-color:var(--purple);color:var(--white);background:var(--purple-tint)}
+
+  /* ---------- overlays ----------
+     Layer stack, deliberately spaced so timeline chrome can't punch through:
+       board content .......... 0–99  (.node 80, .counter 90)
+       card sheet ............. 200 / 201
+       search palette ......... 210 / 211
+       toast .................. 300
+     The old sheet sat at 60/61 — under .node and .counter — which is why stage
+     nodes and lane counters showed through an open card. */
+  .scrim{position:fixed;inset:0;background:rgba(6,6,6,.76);z-index:200;opacity:0;
+         pointer-events:none;transition:opacity .2s}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.94);z-index:201;
+    width:min(440px,calc(100vw - 26px));max-height:calc(100vh - 30px);overflow-y:auto;
+    background:linear-gradient(160deg,var(--frame) 0%,var(--frame-2) 100%);
+    border:1px solid var(--purple);border-radius:10px;padding:6px;
+    box-shadow:0 24px 56px rgba(0,0,0,.75);opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s cubic-bezier(.2,.8,.2,1),border-color .2s}
+  .sheet.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  /* the open sheet is colour-keyed to the mode, so "where am I" is answered
+     before you read anything: purple = the card, amber = clock, green = quality */
+  .sheet.m-time{border-color:var(--warn);box-shadow:0 24px 56px rgba(0,0,0,.75),0 0 0 1px rgba(240,180,41,.25)}
+  .sheet.m-qc{border-color:var(--pass);box-shadow:0 24px 56px rgba(0,0,0,.75),0 0 0 1px rgba(74,222,128,.25)}
+  .sheet .tname{font-size:27px}
+  .sheet .two{font-size:15px;padding:3px 9px}
+  .sheet .art{height:168px}
+  .sheet .tline{font-size:11.5px}
+  .sheet .prow{font-size:12px;padding:4px 0}
+  .sheet .tbox{min-height:0}
+
+  /* ---- mode tabs: always visible, so no screen is a dead end ---- */
+  .smodes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin:0 0 6px;
+    background:var(--sunken);border:1px solid var(--rule);padding:4px}
+  .smode{background:none;border:1px solid transparent;color:var(--faint);cursor:pointer;
+    font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.12em;
+    text-transform:uppercase;padding:8px 4px;transition:all .15s;position:relative}
+  .smode:hover{color:var(--white);background:rgba(255,255,255,.05)}
+  .smode.on{color:var(--white);background:var(--purple-tint);border-color:var(--purple)}
+  .smode[data-m="time"].on{background:rgba(240,180,41,.12);border-color:var(--warn);color:var(--warn)}
+  .smode[data-m="qc"].on{background:rgba(74,222,128,.12);border-color:var(--pass);color:var(--pass)}
+  .smode .tag{display:block;font-family:var(--mono);font-size:8.5px;font-weight:400;
+    letter-spacing:.04em;text-transform:none;color:var(--faint);margin-top:2px}
+  .smode.on .tag{color:inherit;opacity:.8}
+  .smode .pip{position:absolute;top:4px;right:5px;width:5px;height:5px;border-radius:50%}
+  .smode .pip.run{background:var(--warn);animation:bp 1.6s ease-in-out infinite}
+  .smode .pip.ok{background:var(--pass)}
+  .smode .pip.bad{background:var(--fail)}
+  @keyframes bp{0%,100%{opacity:1}50%{opacity:.25}}
+  .sheet .close{position:absolute;top:10px;right:12px;z-index:3;background:none;border:none;
+                color:var(--faint);font-size:19px;line-height:1;cursor:pointer;padding:3px 6px}
+  .sheet .close:hover{color:var(--white)}
+
+  /* ---- clock-out parts prompt: sits above the sheet, since it's raised from it ---- */
+  .pscrim{position:fixed;inset:0;background:rgba(6,6,6,.7);z-index:220;opacity:0;
+    pointer-events:none;transition:opacity .18s}
+  .pscrim.open{opacity:1;pointer-events:auto}
+  .pprompt{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.95);z-index:221;
+    width:min(330px,calc(100vw - 28px));
+    background:linear-gradient(160deg,var(--frame) 0%,var(--frame-2) 100%);
+    border:1px solid var(--purple);border-radius:10px;padding:18px 18px 16px;
+    box-shadow:0 24px 56px rgba(0,0,0,.8);opacity:0;pointer-events:none;
+    transition:opacity .18s,transform .18s cubic-bezier(.2,.8,.2,1)}
+  .pprompt.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  .pprompt h3{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--white);margin:0 0 3px}
+  .pprompt .psub{font-size:10.5px;color:var(--faint);margin:0 0 14px;line-height:1.5}
+  .pprompt .psub b{color:var(--purple-lift);font-weight:500}
+  .pprompt label{display:block;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:5px}
+  .pprompt .pf{margin-bottom:12px}
+  .pprompt select,.pprompt input{width:100%;background:var(--sunken);border:1px solid var(--line);
+    color:var(--white);font-family:var(--mono);font-size:14px;padding:9px 10px}
+  .pprompt select:focus,.pprompt input:focus{outline:none;border-color:var(--purple)}
+  .pquick{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap}
+  .pquick button{flex:1;min-width:40px;background:var(--sunken);border:1px solid var(--line);
+    color:var(--dim);font-family:var(--mono);font-size:12px;padding:7px 0;cursor:pointer}
+  .pquick button:hover{border-color:var(--purple);color:var(--white)}
+  .pacts{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:15px}
+  .pacts button{font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.12em;
+    text-transform:uppercase;padding:11px;cursor:pointer;background:var(--sunken);
+    border:1px solid var(--line);color:var(--dim);transition:all .15s}
+  .pacts button.go{border-color:var(--fail);color:var(--fail)}
+  .pacts button.go:hover{background:rgba(248,113,113,.12);color:var(--white)}
+  .pacts button.ghost:hover{border-color:var(--line-hot);color:var(--white)}
+  .prun{font-variant-numeric:tabular-nums;color:var(--white)}
+
+  .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:9px 6px 4px}
+  .act{display:flex;flex-direction:column;gap:3px;text-decoration:none;background:var(--sunken);
+       border:1px solid var(--line);padding:9px 10px;cursor:pointer;font-family:var(--mono);
+       text-align:left;width:100%;transition:border-color .15s,background .15s}
+  .act:hover{border-color:var(--purple);background:var(--purple-tint)}
+  .act .an{font-family:var(--disp);font-size:12px;font-weight:700;letter-spacing:.12em;
+           text-transform:uppercase;color:var(--purple-lift)}
+  .act .ad{font-size:9px;color:var(--faint);line-height:1.3}
+  .act.wide{grid-column:1/-1}
+  .act.ghost .an{color:var(--dim)}
+  .act.go{border-color:rgba(74,222,128,.4)} .act.go .an{color:var(--pass)}
+  .act.stop{border-color:rgba(248,113,113,.4)} .act.stop .an{color:var(--fail)}
+  .act[disabled]{opacity:.4;cursor:not-allowed}
+
+  /* time breakdown */
+  .brk{margin:9px 6px 2px;padding:10px 11px;background:rgba(0,0,0,.3);border:1px solid var(--rule)}
+  .brk .bh{font-family:var(--disp);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--white);margin-bottom:9px;display:flex;justify-content:space-between}
+  .brk .bh span{color:var(--purple-lift)}
+  .seg{margin-bottom:9px}
+  .seg .sl{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin-bottom:4px}
+  .seg .sl b{color:var(--white);font-weight:500;font-variant-numeric:tabular-nums}
+  .track{height:7px;background:var(--sunken);border:1px solid var(--line)}
+  .track i{display:block;height:100%;background:var(--purple)}
+  .seg.op2 .track i{background:var(--purple-lift)}
+  .seg.op3 .track i{background:var(--pass)}
+  .brk .none{font-size:11.5px;color:var(--dim);line-height:1.6}
+  .logrow{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--rule)}
+  .logrow select,.logrow input{background:var(--sunken);border:1px solid var(--line);color:var(--white);
+    font-family:var(--mono);font-size:12px;padding:7px 8px;min-width:0}
+  .logrow select{flex:0 0 74px} .logrow input{flex:1}
+  .logrow button{background:var(--sunken);border:1px solid var(--purple);color:var(--purple-lift);
+    font-family:var(--disp);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:7px 11px;cursor:pointer}
+  .logrow button:hover{background:var(--purple-tint);color:var(--white)}
+
+  /* ---- quoted vs actual ---- */
+  .pace{margin:7px 6px 2px;padding:9px 10px;background:rgba(0,0,0,.3);border:1px solid var(--rule)}
+  .pace.mini{margin:6px 0 0;padding:0;background:none;border:none}
+  .pace .ph{display:flex;justify-content:space-between;align-items:baseline;
+    font-family:var(--disp);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);margin-bottom:8px}
+  .pace .ph span{font-size:11px;letter-spacing:.06em;color:var(--purple-lift)}
+  .pace.warn .ph span{color:var(--warn)}
+  .pace.over .ph span{color:var(--fail)}
+  .ptrack{position:relative;height:9px;background:var(--sunken);border:1px solid var(--rule);
+    overflow:hidden}
+  .pace.mini .ptrack{height:6px}
+  .pfill{position:absolute;left:0;top:0;bottom:0;
+    background:linear-gradient(90deg,var(--purple-deep),var(--purple-lift));
+    box-shadow:0 0 9px rgba(168,85,247,.45);transition:width .45s cubic-bezier(.2,.8,.2,1)}
+  .pace.warn .pfill{background:linear-gradient(90deg,#8a6a12,var(--warn));
+    box-shadow:0 0 9px rgba(240,180,41,.4)}
+  .pace.over .pfill{background:linear-gradient(90deg,#7a2222,var(--fail));
+    box-shadow:0 0 9px rgba(248,113,113,.45)}
+  /* overage rides on top of a full bar, hatched so it reads as debt not progress */
+  .pover{position:absolute;right:0;top:0;bottom:0;opacity:.92;
+    background:repeating-linear-gradient(45deg,var(--fail) 0 3px,rgba(0,0,0,.45) 3px 6px);
+    transition:width .45s cubic-bezier(.2,.8,.2,1)}
+  .ptick{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.13)}
+  .pmark{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--white);
+    box-shadow:0 0 0 1px rgba(0,0,0,.6);transition:left .45s cubic-bezier(.2,.8,.2,1)}
+  .plbl{display:flex;justify-content:space-between;align-items:baseline;margin-top:7px;
+    font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .plbl b{font-family:var(--disp);font-size:15px;font-weight:700;color:var(--white);letter-spacing:.04em}
+  .pace.warn .plbl b{color:var(--warn)}
+  .pace.over .plbl b{color:var(--fail)}
+  .pfoot{margin-top:8px;padding-top:7px;border-top:1px solid var(--rule);
+    font-size:11px;color:var(--dim);line-height:1.55}
+  .pfoot b{color:var(--white);font-weight:500}
+  .pfoot.bad{color:var(--fail)} .pfoot.good{color:var(--pass)}
+  .pnone{font-size:11.5px;color:var(--dim);line-height:1.6}
+  .qrow2{display:grid;grid-template-columns:1fr auto;gap:5px;margin-top:9px}
+  .qrow2 input{background:var(--sunken);border:1px solid var(--line);color:var(--white);
+    font-family:var(--mono);font-size:11px;padding:7px 8px;min-width:0}
+  .qrow2 input:focus{outline:none;border-color:var(--purple)}
+  .qrow2 button{background:var(--sunken);border:1px solid var(--purple);color:var(--purple-lift);
+    font-family:var(--disp);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:0 12px;cursor:pointer}
+  .qrow2 button:hover{background:var(--purple-tint);color:var(--white)}
+
+  /* ---- QC panel: same shell as the time breakdown, different guts ---- */
+  .brk.qc .bh span.pass{color:var(--pass)}
+  .brk.qc .bh span.fail{color:var(--fail)}
+  .brk.qc .bh span.open{color:var(--warn)}
+  .brk.qc .bh span.none{color:var(--faint)}
+  .qident{display:grid;grid-template-columns:repeat(3,1fr);gap:5px 8px;margin-bottom:10px;
+    padding-bottom:9px;border-bottom:1px solid var(--rule)}
+  .qident div{min-width:0}
+  .qident span{display:block;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .qident b{display:block;font-size:11px;color:var(--white);font-weight:500;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qlist{display:flex;flex-direction:column;gap:3px;margin-bottom:9px}
+  .qrow{display:grid;grid-template-columns:1fr auto auto auto auto;gap:7px;align-items:center;
+    font-size:10px;padding:4px 6px;background:rgba(255,255,255,.04);border-left:2px solid var(--line-hot)}
+  .qrow.pass{border-left-color:var(--pass)}
+  .qrow.fail{border-left-color:var(--fail);background:rgba(248,113,113,.07)}
+  .qrow .qf{color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qrow .qn,.qrow .qa{color:var(--dim);font-variant-numeric:tabular-nums}
+  .qrow .qa{color:var(--white)}
+  .qrow .qv{font-size:8px;letter-spacing:.08em;color:var(--pass)}
+  .qrow.fail .qv{color:var(--fail)}
+  .qrow .qx{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;
+    line-height:1;padding:0 2px}
+  .qrow .qx:hover{color:var(--fail)}
+  .qtally{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:9.5px;color:var(--faint);
+    padding-top:8px;border-top:1px solid var(--rule)}
+  .qtally b{font-weight:500;font-size:9.5px;letter-spacing:.06em;color:var(--faint)}
+  .qtally b.ok{color:var(--pass)}
+  .qtally b.bad{color:var(--fail)}
+  .qadd{display:grid;grid-template-columns:1fr 68px 58px 68px auto;gap:5px;margin-top:10px;
+    padding-top:10px;border-top:1px solid var(--rule)}
+  .qadd.two{grid-template-columns:1fr auto;border-top:none;padding-top:0;margin-top:5px}
+  .qadd input{background:var(--sunken);border:1px solid var(--line);color:var(--white);
+    font-family:var(--mono);font-size:10px;padding:6px 7px;min-width:0}
+  .qadd input:focus{outline:none;border-color:var(--purple)}
+  .qadd button{background:var(--sunken);border:1px solid var(--purple);color:var(--purple-lift);
+    font-family:var(--disp);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:0 11px;cursor:pointer}
+  .qadd button:hover{background:var(--purple-tint);color:var(--white)}
+  .qverdict{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px}
+  .qbtn{background:var(--sunken);border:1px solid var(--line);color:var(--dim);
+    font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+    padding:9px;cursor:pointer;transition:all .15s}
+  .qbtn.pass:hover,.qbtn.pass.on{border-color:var(--pass);color:var(--pass);background:rgba(74,222,128,.1)}
+  .qbtn.fail:hover,.qbtn.fail.on{border-color:var(--fail);color:var(--fail);background:rgba(248,113,113,.1)}
+
+  /* ---------- SEARCH ---------- */
+  .sscrim{position:fixed;inset:0;background:rgba(6,6,6,.8);z-index:210;opacity:0;pointer-events:none;
+          transition:opacity .16s}
+  .sscrim.open{opacity:1;pointer-events:auto}
+  .spal{position:fixed;left:50%;top:64px;transform:translate(-50%,-8px);z-index:211;
+    width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 100px);display:flex;flex-direction:column;
+    background:var(--panel);border:1px solid var(--purple);box-shadow:0 24px 60px rgba(0,0,0,.7);
+    opacity:0;pointer-events:none;transition:opacity .16s,transform .16s}
+  .spal.open{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+  .spal input{width:100%;background:var(--sunken);border:none;border-bottom:1px solid var(--line);
+    color:var(--white);font-family:var(--mono);font-size:16px;padding:15px 17px}
+  .spal input:focus{outline:none}
+  .sres{overflow-y:auto;padding:6px 0 8px}
+  .sgrp{font-family:var(--disp);font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+        color:var(--faint);padding:9px 17px 5px}
+  .sitem{display:flex;align-items:center;gap:10px;padding:8px 17px;cursor:pointer;border-left:2px solid transparent}
+  .sitem.sel{background:var(--purple-tint);border-left-color:var(--purple)}
+  .sitem .sk{font-family:var(--disp);font-size:14px;font-weight:700;color:var(--white);
+             flex-shrink:0;min-width:96px}
+  .sitem .sm{font-size:10px;color:var(--dim);flex:1;min-width:0;overflow:hidden;
+             text-overflow:ellipsis;white-space:nowrap}
+  .sitem .sn{font-size:9px;color:var(--faint);flex-shrink:0}
+  .sempty{padding:22px 17px;font-size:11px;color:var(--faint)}
+  .sfoot{border-top:1px solid var(--line);padding:8px 17px;font-size:9px;color:var(--faint);
+         display:flex;gap:14px}
+
+  /* ---------- DASHBOARD ---------- */
+  #scDash{flex-direction:column;overflow-y:auto;padding:14px 14px 32px}
+  .dtitle{font-family:var(--disp);font-size:22px;font-weight:700;color:var(--white)}
+  .dsub{font-size:11px;color:var(--faint);margin:3px 0 0;line-height:1.4}
+  .dsub:empty{display:none}
+  .dhead{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+    flex-wrap:wrap;margin-bottom:12px}
+  .dsort{display:flex;align-items:center;gap:5px}
+  .dsort span{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);
+    margin-right:3px}
+  .dsort button{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:5px 9px;
+    background:none;border:1px solid var(--line);color:var(--faint);cursor:pointer}
+  .dsort button:hover{color:var(--dim);border-color:var(--dim)}
+  .dsort button.son{color:var(--purple-lift);border-color:var(--purple)}
+  /* stage heading, shown only when the sort groups by stage or the role spans several */
+  .dgrp{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--silver);margin:16px 0 7px;
+    border-bottom:1px solid var(--line);padding-bottom:5px}
+  .dgrp:first-child{margin-top:0}
+  .dlist{display:flex;flex-direction:column;gap:10px;max-width:660px}
+  .drow{background:linear-gradient(160deg,var(--face) 0%,var(--face-2) 100%);
+        border:1px solid rgba(255,255,255,.13);position:relative;overflow:hidden;
+        box-shadow:0 6px 16px rgba(0,0,0,.42)}
+  .drow.running{border-color:var(--purple)}
+  .drow .dstripe{position:absolute;left:0;top:0;bottom:0;width:19px;background:var(--purple);
+    display:flex;align-items:center;justify-content:center}
+  .drow.running .dstripe{background:var(--purple-lift)}
+  .drow .dstripe span{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.18em;
+    color:var(--white);writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}
+  .drow .in{margin-left:19px;padding:12px 13px}
+  .drow .top{display:flex;align-items:flex-start;gap:11px}
+  .drow .who{flex:1;min-width:0}
+  .drow .dpart{font-family:var(--disp);font-size:21px;font-weight:700;color:var(--white);line-height:1.1}
+  .drow .meta{font-size:10px;color:var(--dim);margin-top:3px;line-height:1.5}
+  .drow .timer{font-family:var(--disp);font-size:20px;font-weight:700;color:var(--white);
+               font-variant-numeric:tabular-nums;text-align:right;flex-shrink:0;cursor:pointer}
+  .drow .timer small{display:block;font-family:var(--mono);font-size:8px;color:var(--faint);
+                     letter-spacing:.1em;font-weight:400}
+  .drow.running .timer{color:var(--purple-lift)}
+  .drow .btns{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:11px}
+  .drow .flags{margin:8px 0 0}
+  .dempty{background:var(--panel);border:1px solid var(--line);padding:22px 20px;font-size:12px;
+          color:var(--faint);line-height:1.6;max-width:660px}
+  .dempty b{color:var(--dim);font-weight:500}
+
+  .toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,14px);z-index:300;
+    background:var(--panel);border:1px solid var(--purple);padding:11px 16px;font-size:11px;
+    color:var(--ink);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+    box-shadow:0 10px 26px rgba(0,0,0,.5);max-width:calc(100vw - 32px)}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+
+  @media(max-width:700px){
+    .card{width:166px}
+    .tname{font-size:14px}
+    .flow{padding:0 2px}
+    .bar{gap:8px;padding:9px 11px} .bar .t{font-size:12px}
+    .searchbtn{max-width:none;order:5;flex-basis:100%}
+    .drow .btns{grid-template-columns:1fr}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* ================= DEPTH PASS ================= */
+  :root{--e1:0 1px 2px rgba(0,0,0,.32);--sheen:inset 0 1px 0 rgba(255,255,255,.06);
+        --sink:inset 0 2px 5px rgba(0,0,0,.55)}
+  /* body background intentionally transparent — see html,body above */
+  .bar{background:linear-gradient(180deg,#33333A 0%,#2A2A2F 100%);
+    box-shadow:0 6px 18px -8px rgba(0,0,0,.6),var(--sheen);position:relative;z-index:20}
+  .toggle,.searchbtn,select.role,button.mini{box-shadow:var(--sink)}
+  .toggle button.on{box-shadow:0 0 14px -4px rgba(168,85,247,.7)}
+
+  /* the card: a touch more lift and a lit top edge, nothing else moved */
+  .card{box-shadow:0 12px 26px -8px rgba(0,0,0,.7),0 2px 6px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.07)}
+  .card.focus{box-shadow:0 18px 36px -10px rgba(0,0,0,.75),
+    0 0 0 1px rgba(168,85,247,.35),inset 0 1px 0 rgba(255,255,255,.09)}
+  .plate2{box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 -14px 22px -18px #000}
+  .art,.tbox,.bars,.track{box-shadow:var(--sink)}
+  .two{box-shadow:0 2px 6px -1px rgba(0,0,0,.6)}
+  .pt{box-shadow:var(--sink)}
+
+  .node .plate{box-shadow:0 4px 12px -4px rgba(0,0,0,.7),var(--sheen)}
+  .node .dot{box-shadow:0 2px 6px rgba(0,0,0,.6)}
+  .node.on .dot{box-shadow:0 0 12px -1px rgba(146,51,230,.8)}
+
+  .drow{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s,border-color .18s}
+  .drow:hover{transform:translateY(-2px);box-shadow:0 14px 28px -10px rgba(0,0,0,.6)}
+  .drow.running{box-shadow:0 10px 24px -10px rgba(0,0,0,.6),0 0 0 1px rgba(168,85,247,.3)}
+  .act,.mb,.qbtn{transition:transform .12s,border-color .15s,background .15s,color .15s}
+  .act:active,.mb:active,.qbtn:active{transform:scale(.985)}
+  .sheet{box-shadow:0 30px 70px -18px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.07)}
+
+  @media(max-width:700px){
+    .bar{gap:8px}
+    .drow .dpart{font-size:19px}
+    .sheet{width:min(440px,calc(100vw - 16px));max-height:calc(100dvh - 20px)}
+  }
+  @media(prefers-reduced-motion:reduce){.drow:hover{transform:none}}
+
+  /* ---------- themes (driven from terminal.html's selector) ---------- */
+  :root[data-theme="pixel"]{
+    --purple:#39FF6A;--purple-lift:#8CFFAE;--purple-deep:#1E9E43;--purple-tint:rgba(57,255,106,.12);
+    --bg:#0B0F0B;--panel:#10160F;--raised:#16200F;--sunken:#000;
+    --line:#254024;--line-hot:#3A6636;
+    --ink:#D8FFDD;--dim:#7FCB8C;--faint:#3E6A45;
+    --pass:#39FF6A;--warn:#FFD23F;--fail:#FF3B3B;
+    --frame:#0E140D;--frame-2:#060A05;--face:#142016;--face-2:#0E170F;
+    --rule:rgba(140,255,174,.14);--off:#101B10;--off-2:#0B140B;
+    --e1:2px 2px 0 #000;--sheen:none;--sink:inset 0 0 0 2px rgba(0,0,0,.7);
+  }
+  :root[data-theme="pixel"] *{border-radius:0!important}
+  :root[data-theme="pixel"] body{background:transparent}
+  :root[data-theme="pixel"] body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:400;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
+
+  :root[data-theme="stealth"]{
+    --purple:#C21E2B;--purple-lift:#E5495A;--purple-deep:#7A1017;--purple-tint:rgba(194,30,43,.1);
+    --bg:#0A0A0B;--panel:#111113;--raised:#17171A;--sunken:#000;
+    --line:#242426;--line-hot:#333336;
+    --ink:#E9E9EC;--dim:#8A8A90;--faint:#54545A;
+    --pass:#4ADE80;--warn:#F0B429;--fail:#E5495A;
+    --frame:#141416;--frame-2:#0A0A0B;--face:#1B1B1E;--face-2:#131315;
+    --rule:rgba(255,255,255,.09);--off:#151517;--off-2:#0F0F11;
+    --e1:0 1px 2px rgba(0,0,0,.55);--sheen:inset 0 1px 0 rgba(255,255,255,.03);
+    --sink:inset 0 3px 7px rgba(0,0,0,.75);
+  }
+  :root[data-theme="stealth"] body{background:transparent}
+
+  :root[data-theme="mono"] body{filter:grayscale(1) contrast(1.08)}
+
+</style>
+
+<script>
+(function(){
+  var THEMES=['normal','pixel','mono','stealth'];
+  function apply(t){
+    if(THEMES.indexOf(t)<0) t='normal';
+    document.documentElement.setAttribute('data-theme',t);
+  }
+  var saved='normal';
+  try{ saved=localStorage.getItem('sr_theme')||'normal'; }catch(e){}
+  apply(saved);
+  window.addEventListener('storage',function(e){
+    if(e.key==='sr_theme') apply(e.newValue||'normal');
+  });
+})();
+</script>
+
+<div class="bar">
+  <div class="t">Stealth <span>R&amp;D</span></div>
+  <div class="toggle">
+    <button id="tabTimeline" class="on">Timeline</button>
+    <button id="tabDash">Dashboard</button>
+  </div>
+  <button class="searchbtn" id="searchBtn">Search parts, WO, PO, invoice<kbd>/</kbd></button>
+  <div class="right">
+    <div class="stat demo" id="sDemo" style="display:none">DEMO DATA</div>
+    <div class="stat">OPEN <b id="sOpen">—</b></div>
+    <div class="stat">LATE <b id="sLate">—</b></div>
+    <select class="role" id="roleSel" title="Which station do you run?"></select>
+    <button class="mini" id="btnAll">Open all</button>
+  </div>
+    <button class="help" id="hint" type="button" tabindex="-1">?</button>
+</div>
+
+<div class="screen on" id="scTimeline"><div class="flow" id="flow"></div></div>
+
+<div class="screen" id="scDash">
+  <div class="dhead">
+    <div>
+      <div class="dtitle" id="dTitle">Your queue</div>
+      <div class="dsub" id="dSub">—</div>
+    </div>
+    <div class="dsort">
+      <span>Sort</span>
+      <button class="son" data-sort="due">Due date</button>
+      <button data-sort="customer">Customer</button>
+      <button data-sort="po">PO</button>
+      <button data-sort="stage">Stage</button>
+    </div>
+  </div>
+  <div class="dlist" id="dList"></div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div class="pscrim" id="pscrim"></div>
+<div class="pprompt" id="pprompt" role="dialog" aria-modal="true"></div>
+
+<div class="sscrim" id="sscrim"></div>
+<div class="spal" id="spal" role="dialog" aria-modal="true">
+  <input id="sInput" type="text" placeholder="Part, work order, PO, invoice, customer…" autocomplete="off" spellcheck="false">
+  <div class="sres" id="sRes"></div>
+  <div class="sfoot"><span>↑↓ move</span><span>↵ open</span><span>esc close</span></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var APP_VERSION='v4.13';
+
+  var STAGES=[
+    {name:'Award',   dir:'up'},
+    {name:'Plan',    dir:'down'},
+    {name:'Machine', dir:'up'},
+    {name:'QC',      dir:'down'},
+    {name:'Pack',    dir:'up'},
+    {name:'Ship',    dir:'down'}
+  ];
+  var OPS=['OP1','OP2','OP3'];
+  // Which operation a clock session belongs to is a function of where the card is
+  // sitting — a session logged from Machine is OP work, one logged from QC is
+  // inspection time. This is why the clock had to live on the card: standing at a
+  // separate timeclock, nothing knows the stage.
+  var STAGE_OPS={
+    'Award':  ['Office'],
+    'Plan':   ['Programming','Setup'],
+    'Machine':['OP1','OP2','OP3'],
+    'QC':     ['Inspection','Rework'],
+    'Pack':   ['Packaging'],
+    'Ship':   ['Shipping']
+  };
+  function stageName(c){return (STAGES[c.stage-1]||{}).name||'\u2014';}
+  function opsFor(c){return STAGE_OPS[stageName(c)]||OPS;}
+  function defaultOp(c){return opsFor(c)[0];}
+  // Parts only mean something at stations that actually move pieces.
+  function countsParts(c){var s=stageName(c);return s==='Machine'||s==='QC'||s==='Pack';}
+
+  var ROLES=[
+    {id:'owner',    label:'Owner (all stations)', stages:[1,2,3,4,5,6]},
+    {id:'office',   label:'Office / Programming', stages:[1,2]},
+    {id:'machinist',label:'Machinist',            stages:[3]},
+    {id:'qc',       label:'Quality',              stages:[4]},
+    {id:'shipping', label:'Shipping',             stages:[5,6]},
+    {id:'viewer',   label:'View only',            stages:[]}
+  ];
+
+  var QUOTE_TOOL='quote-generator.html';
+  var DROPBOX_ROOT='https://www.dropbox.com/home/JOBSHOP';
+
+  var flow=document.getElementById('flow');
+  var scrim=document.getElementById('scrim');
+  var sheetEl=document.getElementById('sheet');
+  var toastEl=document.getElementById('toast');
+
+  var openState={}, peekState={}, focusIdx={};
+  var CARDS=[], laneEls=[], nodeEls=[];
+  var hits={};   // card ids highlighted by a search result
+  var view='timeline', openSheetId=null, sheetMode='card';
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function lsGet(k,f){try{var v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch(e){return f;}}
+  function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+  var role=lsGet('sr_role','owner');
+  var clocks=lsGet('sr_clocks',{});
+  var moves=lsGet('sr_moves',{});
+  var qcRecs=lsGet('sr_qc',{});
+  var quotes=lsGet('sr_quoted',{});   // local quoted-hours overrides, keyed by card id
+  function saveClocks(){lsSet('sr_clocks',clocks);}
+  function saveMoves(){lsSet('sr_moves',moves);}
+  function saveQC(){lsSet('sr_qc',qcRecs);}
+  function saveQuotes(){lsSet('sr_quoted',quotes);}
+
+  function roleDef(){for(var i=0;i<ROLES.length;i++)if(ROLES[i].id===role)return ROLES[i];return ROLES[0];}
+  function isMine(c){return roleDef().stages.indexOf(c.stage)>=0;}
+  function plain(){return role!=='owner'&&role!=='viewer';}
+  function toast(m){
+    toastEl.textContent=m;toastEl.classList.add('on');
+    clearTimeout(toastEl._t);toastEl._t=setTimeout(function(){toastEl.classList.remove('on');},3000);
+  }
+
+  // ---- WORK ORDER: XX-YYYY, counter restarts each January ---------
+  function cardCreated(id){
+    if(!id||id.length<8)return null;
+    var ts=parseInt(id.substring(0,8),16);
+    return (!ts||isNaN(ts))?null:new Date(ts*1000);
+  }
+  function assignWorkOrders(cards){
+    var dated=cards.filter(function(c){return c._created;});
+    dated.sort(function(a,b){return a._created-b._created;});
+    var per={};
+    dated.forEach(function(c){
+      var y=c._created.getFullYear();
+      per[y]=(per[y]||0)+1;
+      c.wo=String(y%100).padStart(2,'0')+'-'+String(per[y]).padStart(4,'0');
+    });
+    cards.forEach(function(c){if(!c.wo)c.wo='\u2014';});
+  }
+
+  function isLate(c){return !!c.active&&c.days!=null&&c.days<0;}
+  function siblings(c){
+    if(!c.po)return 0;
+    return CARDS.filter(function(x){return x.po===c.po&&x.stage!==c.stage;}).length;
+  }
+  function dueText(c){
+    if(c.days==null)return c.active?'no date':'\u2014';
+    if(c.days<0)return Math.abs(c.days)+'d over';
+    return c.days===0?'today':'in '+c.days+'d';
+  }
+  function byId(id){for(var i=0;i<CARDS.length;i++)if(CARDS[i].id===id)return CARDS[i];return null;}
+  function stageCards(s){return CARDS.filter(function(c){return c.stage===s;});}
+  function dropboxURL(c){
+    return DROPBOX_ROOT+'/'+encodeURIComponent(c.customer||'')+'/'+encodeURIComponent(c.part||'');
+  }
+
+  // ---- CLOCK: plain in / out, parts logged separately -------------
+  function rec(c){
+    if(!clocks[c.id])clocks[c.id]={startedAt:null,accumulated:0,sessions:[],opTotals:{}};
+    var r=clocks[c.id];
+    if(!r.sessions)r.sessions=[];
+    if(!r.opTotals)r.opTotals={};
+    return r;
+  }
+  function isRunning(c){return !!(clocks[c.id]&&clocks[c.id].startedAt);}
+
+  // The clock record is richer than the locked schema's flat time/op1/op2, so it
+  // persists as its own `clock` object AND writes the three locked fields as
+  // derived values. That keeps `time`/`op1`/`op2` meaning exactly what they meant
+  // in the Trello descriptions (total hours, pcs done on each op) while nothing
+  // in the session history gets thrown away.
+  function clockFields(c){
+    var r=clocks[c.id]||{}, t=r.opTotals||{};
+    return {
+      time:+(((r.accumulated||0)/3600000).toFixed(2)),
+      op1:(t.OP1!=null?t.OP1:null),
+      op2:(t.OP2!=null?t.OP2:null),
+      clock:{
+        accumulated:r.accumulated||0,
+        startedAt:r.startedAt||null,
+        sessions:r.sessions||[],
+        opTotals:t
+      }
+    };
+  }
+  // Unlike a stage move, a failed clock write is NOT rolled back — the local
+  // record is the only evidence that the work happened, and discarding it to
+  // match the server would destroy real hours. Mark it unsynced instead and
+  // retry on the next poll.
+  var unsynced={};
+  function syncClock(c){
+    patchJob(c,clockFields(c),function(ok){
+      if(ok){ delete unsynced[c.id]; }
+      else { unsynced[c.id]=1; toast('Time saved on this device \u2014 not synced yet'); }
+    });
+  }
+  function retryUnsynced(){
+    Object.keys(unsynced).forEach(function(id){
+      var c=byId(id); if(!c)return;
+      patchJob(c,clockFields(c),function(ok){ if(ok)delete unsynced[id]; });
+    });
+  }
+  function sessionMs(c){var r=clocks[c.id];return (r&&r.startedAt)?(Date.now()-r.startedAt):0;}
+  function totalMs(c){var r=clocks[c.id];return r?((r.accumulated||0)+sessionMs(c)):0;}
+  function fmtHMS(ms){
+    var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
+    return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+  }
+  function fmtHours(ms){return (ms/3600000).toFixed(2);}
+  function partsDone(c){
+    var r=clocks[c.id];if(!r)return 0;
+    return OPS.reduce(function(a,o){return a+(r.opTotals[o]||0);},0);
+  }
+
+  function clockIn(c){
+    // Only one job runs at a time. Anything else still running gets closed out
+    // against the station it was started at, so its time isn't silently orphaned.
+    var autoClosed=[];
+    Object.keys(clocks).forEach(function(id){
+      var r=clocks[id];
+      if(id!==c.id&&r&&r.startedAt){
+        var ms=Date.now()-r.startedAt;
+        r.accumulated=(r.accumulated||0)+ms;
+        r.sessions.push({op:r.op||'\u2014',stage:r.stage||null,parts:0,ms:ms,endedAt:Date.now()});
+        r.startedAt=null;r.op=null;r.stage=null;
+        autoClosed.push(id);
+      }
+    });
+    var r=rec(c);
+    r.startedAt=Date.now();
+    r.op=defaultOp(c);          // stamped from the stage the card is sitting at
+    r.stage=stageName(c);
+    saveClocks();
+    toast('Clocked in \u2014 '+r.stage+' \u00b7 '+r.op);
+    refreshViews();
+    syncClock(c);
+    // Cards auto-clocked out above were mutated too — push those, or their
+    // closing session only exists on this device.
+    autoClosed.forEach(function(id){ var o=byId(id); if(o)syncClock(o); });
+  }
+
+  // Clocking out always asks what got finished, because the session's parts count is
+  // the thing nobody goes back and fills in later. "None" is a valid answer.
+  function clockOut(c){
+    var r=clocks[c.id];
+    if(!r||!r.startedAt)return;
+    openPartsPrompt(c);
+  }
+  function finishClockOut(c,op,parts){
+    var r=clocks[c.id];
+    if(!r||!r.startedAt)return;
+    var ms=Date.now()-r.startedAt;
+    r.accumulated=(r.accumulated||0)+ms;
+    r.sessions.push({op:op,stage:r.stage||stageName(c),parts:parts||0,ms:ms,endedAt:Date.now()});
+    if(parts>0)r.opTotals[op]=(r.opTotals[op]||0)+parts;
+    r.startedAt=null;r.op=null;r.stage=null;
+    saveClocks();
+    toast('Clocked out \u2014 '+fmtHours(ms)+' hrs'+(parts>0?(' \u00b7 '+parts+' pcs on '+op):''));
+    refreshViews();
+    syncClock(c);
+  }
+  // Parts are logged on their own, from the time breakdown — not a gate on clocking out.
+  function logParts(c,op,n){
+    var r=rec(c);
+    r.opTotals[op]=(r.opTotals[op]||0)+n;
+    var last=r.sessions[r.sessions.length-1];
+    if(last&&!last.op){last.op=op;last.parts=n;}
+    else r.sessions.push({op:op,parts:n,ms:0,endedAt:Date.now()});
+    saveClocks();
+    toast('Logged '+n+' pcs on '+op);
+    refreshViews();
+    syncClock(c);
+  }
+
+  // ---- QUALITY ---------------------------------------------------
+  // Lives on the card for the same reason the clock does: the part number, rev, PO,
+  // customer and qty are already here. A standalone inspection tool makes you retype
+  // all five before you can measure anything.
+  function qrec(c){
+    if(!qcRecs[c.id])qcRecs[c.id]={checks:[],status:'none',insp:0,note:''};
+    var r=qcRecs[c.id];
+    if(!r.checks)r.checks=[];
+    return r;
+  }
+  function qcStatus(c){var r=qcRecs[c.id];return r?r.status:'none';}
+  function qcFails(c){
+    var r=qcRecs[c.id];if(!r)return 0;
+    return r.checks.filter(function(k){return k.verdict==='fail';}).length;
+  }
+  // A check is in tolerance when |actual - nominal| <= tol. Blank tol means
+  // it's a visual/attribute check and the verdict is whatever was tapped.
+  function verdictFor(nominal,actual,tol){
+    if(nominal===''||actual==='')return null;
+    var n=parseFloat(nominal),a=parseFloat(actual),t=parseFloat(tol);
+    if(isNaN(n)||isNaN(a))return null;
+    if(isNaN(t))t=0;
+    return Math.abs(a-n)<=t?'pass':'fail';
+  }
+  function addCheck(c,feat,nominal,actual,tol){
+    var r=qrec(c);
+    var v=verdictFor(nominal,actual,tol);
+    r.checks.push({feat:feat,nominal:nominal,actual:actual,tol:tol,
+                   verdict:v||'pass',at:Date.now()});
+    if(r.status==='none')r.status='open';
+    saveQC();
+    toast((v==='fail'?'OUT OF TOL \u2014 ':'Logged \u2014 ')+feat);
+    refreshViews();
+  }
+  function dropCheck(c,i){
+    var r=qrec(c);r.checks.splice(i,1);saveQC();refreshViews();
+  }
+  function setQCVerdict(c,status){
+    var r=qrec(c);
+    r.status=status;
+    saveQC();
+    toast(status==='pass'?'Inspection accepted':'Inspection rejected \u2014 card held at QC');
+    refreshViews();
+  }
+  function setInspected(c,n){
+    var r=qrec(c);r.insp=n;saveQC();refreshViews();
+  }
+
+  // ---- CLOCK-OUT PARTS PROMPT ------------------------------------
+  var pscrimEl=document.getElementById('pscrim');
+  var ppromptEl=document.getElementById('pprompt');
+  var promptCard=null;
+
+  function openPartsPrompt(c){
+    promptCard=c;
+    var r=clocks[c.id]||{};
+    var ops=opsFor(c), cur=r.op||defaultOp(c);
+    var elapsed=fmtHMS(Date.now()-(r.startedAt||Date.now()));
+    var qty=(c.qty!=null?c.qty:null), done=partsDone(c);
+    var remain=(qty!=null)?Math.max(0,qty-done):null;
+    var parts=countsParts(c);
+
+    ppromptEl.innerHTML=
+      '<h3>Clock out</h3>'+
+      '<p class="psub"><span class="prun">'+elapsed+'</span> on <b>'+esc(stageName(c))+'</b> \u00b7 '+
+        esc(c.part||c.wo||'\u2014')+
+        (remain!=null?(' \u00b7 '+remain+' of '+qty+' left'):'')+'</p>'+
+      '<div class="pf"><label>Operation</label><select id="pOp">'+
+        ops.map(function(o){return '<option'+(o===cur?' selected':'')+'>'+esc(o)+'</option>';}).join('')+
+      '</select></div>'+
+      (parts
+        ? '<div class="pf"><label>Parts finished this session</label>'+
+          '<input id="pParts" type="number" min="0" step="1" inputmode="numeric" value="0">'+
+          '<div class="pquick">'+
+            [1,2,5,10].map(function(n){return '<button data-add="'+n+'">+'+n+'</button>';}).join('')+
+            (remain?'<button data-set="'+remain+'">All '+remain+'</button>':'')+
+            '<button data-set="0">0</button>'+
+          '</div></div>'
+        : '<input id="pParts" type="hidden" value="0">')+
+      '<div class="pacts">'+
+        '<button class="ghost" data-p="cancel">Keep running</button>'+
+        '<button class="go" data-p="out">Clock out</button>'+
+      '</div>';
+
+    pscrimEl.classList.add('open');ppromptEl.classList.add('open');
+
+    Array.prototype.forEach.call(ppromptEl.querySelectorAll('[data-add],[data-set]'),function(b){
+      b.onclick=function(){
+        var f=ppromptEl.querySelector('#pParts');
+        if(b.hasAttribute('data-set'))f.value=b.getAttribute('data-set');
+        else f.value=(parseInt(f.value,10)||0)+parseInt(b.getAttribute('data-add'),10);
+      };
+    });
+    ppromptEl.querySelector('[data-p="cancel"]').onclick=closePartsPrompt;
+    ppromptEl.querySelector('[data-p="out"]').onclick=function(){
+      var op=ppromptEl.querySelector('#pOp').value;
+      var n=parseInt(ppromptEl.querySelector('#pParts').value,10);
+      if(isNaN(n)||n<0)n=0;
+      closePartsPrompt();
+      finishClockOut(promptCard,op,n);
+      var adv=(pendingAdvance===promptCard.id)?promptCard:null;
+      pendingAdvance=null;
+      promptCard=null;
+      if(adv)doAdvance(adv);
+    };
+    var pf=ppromptEl.querySelector('#pParts');
+    if(pf&&pf.type!=='hidden')setTimeout(function(){pf.focus();pf.select();},60);
+  }
+  function closePartsPrompt(){
+    pscrimEl.classList.remove('open');ppromptEl.classList.remove('open');
+    pendingAdvance=null;   // cancelling the prompt cancels the advance too
+  }
+  pscrimEl.addEventListener('click',closePartsPrompt);
+
+  // ---- QUOTED vs ACTUAL ------------------------------------------
+  // Quoted hours come off the card when the API supplies them; a local override
+  // wins, so a number can be set from the shop floor without a Trello edit.
+  function quotedHrs(c){
+    if(quotes[c.id]!=null)return quotes[c.id];
+    var v=(c.quoted!=null)?c.quoted:(c.est!=null?c.est:null);
+    if(v==null)return null;
+    v=parseFloat(v);
+    return isNaN(v)?null:v;
+  }
+  function setQuoted(c,h){
+    if(h==null||isNaN(h)||h<=0){delete quotes[c.id];}
+    else quotes[c.id]=h;
+    saveQuotes();
+    toast(h>0?('Quoted '+h.toFixed(2)+' hrs'):'Quote cleared');
+    refreshViews();
+  }
+  // Pace compares burn against completion: 40% of the hours spent to make 40% of the
+  // parts is on pace; 80% spent for 40% made is not. Needs a qty to mean anything.
+  function paceOf(c){
+    var q=quotedHrs(c);
+    if(!q)return null;
+    var actual=totalMs(c)/3600000;
+    var pct=q>0?(actual/q*100):0;
+    var qty=(c.qty!=null?+c.qty:null), done=partsDone(c);
+    var madePct=(qty&&qty>0)?(done/qty*100):null;
+    return {quoted:q,actual:actual,pct:pct,over:actual>q,
+            delta:actual-q,madePct:madePct,
+            // projected total at the current per-part rate
+            proj:(done>0&&qty)?(actual/done*qty):null};
+  }
+
+  function paceBarHTML(c,full){
+    var p=paceOf(c);
+    if(!p){
+      return full
+        ? '<div class="pace none"><div class="ph">Quoted vs actual</div>'+
+          '<div class="pnone">No quoted hours.</div></div>'
+        : '';
+    }
+    var capped=Math.min(p.pct,100);
+    var overPct=p.over?Math.min((p.delta/p.quoted)*100,100):0;
+    var state=p.over?'over':(p.pct>=85?'warn':'ok');
+
+    // the "should be here" marker — where burn ought to sit given parts finished
+    var marker=(p.madePct!=null)
+      ? '<i class="pmark" style="left:'+Math.min(p.madePct,100).toFixed(1)+'%" '+
+        'title="'+p.madePct.toFixed(0)+'% of parts finished"></i>'
+      : '';
+
+    var bar='<div class="ptrack '+state+'">'+
+        '<i class="pfill" style="width:'+capped.toFixed(1)+'%"></i>'+
+        (p.over?'<i class="pover" style="width:'+overPct.toFixed(1)+'%"></i>':'')+
+        marker+
+        '<i class="ptick" style="left:25%"></i><i class="ptick" style="left:50%"></i>'+
+        '<i class="ptick" style="left:75%"></i>'+
+      '</div>';
+
+    if(!full){
+      return '<div class="pace mini '+state+'">'+bar+
+        '<div class="plbl"><span>'+p.actual.toFixed(2)+' / '+p.quoted.toFixed(2)+' hrs</span>'+
+        '<b>'+Math.round(p.pct)+'%</b></div></div>';
+    }
+
+    var foot='';
+    if(p.madePct!=null){
+      var pace=p.pct-p.madePct;
+      foot='<div class="pfoot '+(pace>8?'bad':pace<-8?'good':'')+'">'+
+        Math.round(p.madePct)+'% of parts done on '+Math.round(p.pct)+'% of the hours \u00b7 '+
+        (Math.abs(pace)<=8?'on pace':(pace>0?'burning ahead of output':'running under quote'))+
+      '</div>';
+      if(p.proj){
+        foot+='<div class="pfoot">Projected at this rate: <b>'+p.proj.toFixed(2)+' hrs</b>'+
+          ' \u00b7 '+(p.proj>p.quoted?('+'+(p.proj-p.quoted).toFixed(2)+' over'):
+                      ((p.quoted-p.proj).toFixed(2)+' under'))+'</div>';
+      }
+    }
+
+    return '<div class="pace '+state+'">'+
+      '<div class="ph">Quoted vs actual'+
+        '<span>'+(p.over?('+'+p.delta.toFixed(2)+' hrs over'):(p.quoted-p.actual).toFixed(2)+' hrs left')+
+        '</span></div>'+
+      bar+
+      '<div class="plbl"><span>'+p.actual.toFixed(2)+' actual \u00b7 '+p.quoted.toFixed(2)+' quoted</span>'+
+        '<b>'+Math.round(p.pct)+'%</b></div>'+
+      foot+
+    '</div>';
+  }
+
+  function advance(c){
+    if(c.stage>=STAGES.length){toast('Already at the last station.');return;}
+    // QC is the one station with a gate: a rejected or unrecorded inspection
+    // shouldn't be able to walk downstream into Pack.
+    if((STAGES[c.stage-1]||{}).name==='QC'){
+      var st=qcStatus(c);
+      if(st==='fail'){toast('Inspection rejected \u2014 clear it before sending on.');return;}
+      if(st!=='pass'){toast('No inspection recorded. Accept or reject it first.');openSheet(c,'qc');return;}
+    }
+    if(isRunning(c)){
+      // Finishing while the clock runs still owes a parts count. Collect it first,
+      // then advance — otherwise the session closes with a silent zero.
+      openPartsPrompt(c);
+      pendingAdvance=c.id;
+      return;
+    }
+    doAdvance(c);
+  }
+  var pendingAdvance=null;
+  function doAdvance(c){
+    var to=c.stage+1, from=c.stage;
+    c.stage=to;c.list=STAGES[to-1].name;
+    // Local write stays — it's the optimistic update and the offline fallback.
+    // The server write below is what makes the move survive a device switch.
+    moves[c.id]=to;saveMoves();
+    closeSheet();
+    toast('Sent to '+STAGES[to-1].name);
+    refreshViews();
+    patchJob(c,{stage:to},function(ok){
+      if(ok) return;
+      // Server refused or unreachable: roll the card back rather than leave the
+      // tablet showing a move that didn't persist. The whole point of this
+      // endpoint is that two devices agree — a silent local-only move is the
+      // exact failure it exists to prevent.
+      c.stage=from;c.list=STAGES[from-1].name;
+      moves[c.id]=from;saveMoves();
+      toast('Move didn\u2019t save \u2014 put back in '+STAGES[from-1].name);
+      refreshViews();
+    });
+  }
+
+  // ---- WRITE PATH: api/jobs.js -----------------------------------------
+  // Single choke point for every card mutation, so clock / QC / quoted hours
+  // can hang off this same function as they get wired. Demo cards are never
+  // sent — they have no server-side identity.
+  function patchJob(c,fields,done){
+    if(IS_DEMO||!c||!c.id){ if(done)done(true); return; }
+    var body=Object.assign({id:c.id},fields);
+    fetch('/api/jobs',{
+      method:'PATCH', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    })
+    .then(function(r){ if(done)done(r.ok); })
+    .catch(function(){ if(done)done(false); });
+  }
+
+  // ---- CARD FACE (MTG frame) -------------------------------------
+  function flagsHTML(c){
+    var f='';
+    if(isLate(c))f+='<span class="flag late">'+Math.abs(c.days)+'D LATE</span>';
+    var sib=siblings(c);
+    if(sib)f+='<span class="flag sib">+'+sib+' ON PO</span>';
+    if(isRunning(c))f+='<span class="flag run">RUNNING</span>';
+    // QC state deliberately not shown here — it lives on the Quality tab, which
+    // carries its own status pip. It was reading twice on one card.
+    if(isMine(c)&&plain())f+='<span class="flag you">YOUR STATION</span>';
+    if(c.invoice)f+='<span class="flag inv">INV '+esc(c.invoice)+'</span>';
+    return f;
+  }
+  function prow(k,v,click){
+    return '<div class="prow'+(click?' clickable':'')+'"'+(click?' data-open="time"':'')+
+           '><span class="k">'+k+'</span><span class="v">'+v+'</span></div>';
+  }
+
+  // Per-card art view. Model is a placeholder until STEP parsing lands, but the
+  // toggle is real so the slot exists and card layout won't shift when it does.
+  var artMode={};
+  function artHTML(c){
+    var mode=artMode[c.id]||'photo';
+    var body;
+    if(mode==='model'){
+      body='<div class="modelph"><svg viewBox="0 0 64 40" aria-hidden="true">'+
+        '<path d="M8 26 L20 10 L44 10 L56 26 L44 34 L20 34 Z"/>'+
+        '<path d="M20 10 L20 34 M44 10 L44 34 M8 26 L56 26"/>'+
+        '<circle cx="32" cy="22" r="5"/></svg>'+
+        '<i>NO MODEL \u2014 STEP NOT LOADED</i></div>';
+    }else{
+      body=c.photo?'<img src="'+esc(c.photo)+'" alt="">':'<i>NO PHOTO</i>';
+    }
+    return '<div class="art">'+body+
+      '<div class="artsw" data-artsw="'+esc(c.id)+'">'+
+        '<button class="'+(mode==='photo'?'on':'')+'" data-art="photo">Photo</button>'+
+        '<button class="'+(mode==='model'?'on':'')+'" data-art="model">Model</button>'+
+      '</div></div>';
+  }
+
+  // One delegated handler covers every context the card renders in — lane fan,
+  // sheet, and dashboard row — so the toggle doesn't need re-wiring at each site.
+  document.addEventListener('click',function(ev){
+    var b=ev.target.closest&&ev.target.closest('[data-art]');
+    if(!b)return;
+    var sw=b.closest('[data-artsw]');
+    if(!sw)return;
+    ev.stopPropagation();ev.preventDefault();
+    var id=sw.getAttribute('data-artsw');
+    var want=b.getAttribute('data-art');
+    if(artMode[id]===want)return;
+    artMode[id]=want;
+    refreshViews();
+  },true);
+
+  function cardFaceHTML(c,big,extra){
+    var done=partsDone(c), qty=(c.qty!=null?c.qty:null);
+    var t=totalMs(c);
+
+    // Quantity lives in exactly one place now — the corner index, MTG-style.
+    // It used to appear three times: a Qty row, a Parts row, and the corner.
+    var prod=prow('Time',t>0?(fmtHours(t)+' hrs'):(c.time!=null?esc(c.time)+' hrs':'0.00 hrs'),true);
+
+    // little op-share bar under the block
+    var r=clocks[c.id];
+    var bars='';
+    if(r&&r.sessions&&r.sessions.length){
+      var byOp={},tot=0;
+      r.sessions.forEach(function(s){var o=s.op||'\u2014';byOp[o]=(byOp[o]||0)+s.ms;tot+=s.ms;});
+      if(tot>0){
+        var cols={'OP1':'var(--purple)','OP2':'var(--purple-lift)','OP3':'var(--pass)','\u2014':'var(--line-hot)'};
+        bars='<div class="bars">'+Object.keys(byOp).map(function(o){
+          return '<i style="width:'+((byOp[o]/tot)*100).toFixed(1)+'%;background:'+(cols[o]||'var(--line-hot)')+'"></i>';
+        }).join('')+'</div>';
+      }
+    }
+
+    var flags=flagsHTML(c);
+
+    return '<div class="plate2">'+
+      '<div class="tbar"><div class="tname">'+esc(c.part||c.name||'\u2014')+'</div>'+
+        '<div class="two">'+esc(c.wo)+'</div></div>'+
+      artHTML(c)+
+      '<div class="tline"><b>PO '+esc(c.po||'\u2014')+'</b><em>\u00b7</em>'+
+        'REV '+esc(c.rev||'\u2014')+'<em>\u00b7</em>'+esc(dueText(c))+'</div>'+
+      '<div class="tbox">'+prod+bars+paceBarHTML(c,false)+'</div>'+
+      (flags?'<div class="flags">'+flags+'</div>':'')+
+      '<div class="bbar"><div class="coll">'+esc(c.customer||'\u2014')+'<br>'+
+        esc((STAGES[c.stage-1]||{}).name||c.list||'\u2014')+'</div>'+
+        '<div class="pt">'+done+' / '+(qty!=null?esc(qty):'?')+'</div></div>'+
+      (extra||'')+
+    '</div>';
+  }
+
+  function miniActsHTML(c){
+    var mine=isMine(c)&&role!=='viewer';
+    var b='';
+    if(mine){
+      b+=isRunning(c)
+        ? '<button class="mb live" data-mini="status">'+fmtHMS(totalMs(c))+'</button>'+
+          '<button class="mb stop" data-mini="out">Clock out</button>'
+        : '<button class="mb go" data-mini="in">Clock in</button>';
+    }
+    b+='<a class="mb" href="'+esc(dropboxURL(c))+'" target="_blank" rel="noopener" data-mini="files">Files</a>';
+    return '<div class="mini-acts">'+b+'</div>';
+  }
+
+  // ---- SHEET -----------------------------------------------------
+  function modeTabsHTML(c){
+    var run=isRunning(c), qs=qcStatus(c), qf=qcFails(c), n=qrec(c).checks.length;
+    var qpip=(qs==='pass')?'ok':(qs==='fail'||qf)?'bad':'';
+    var t=totalMs(c);
+    return '<div class="smodes">'+
+      '<button class="smode'+(sheetMode==='card'?' on':'')+'" data-m="card">Card'+
+        '<span class="tag">'+esc(stageName(c))+'</span></button>'+
+      '<button class="smode'+(sheetMode==='time'?' on':'')+'" data-m="time">'+
+        (run?'<span class="pip run"></span>':'')+'Clock'+
+        '<span class="tag">'+(t>0?fmtHours(t)+' hrs':'not started')+'</span></button>'+
+      '<button class="smode'+(sheetMode==='qc'?' on':'')+'" data-m="qc">'+
+        (qpip?'<span class="pip '+qpip+'"></span>':'')+'Quality'+
+        '<span class="tag">'+(qs==='pass'?'accepted':qs==='fail'?'rejected':n?(n+' checks'):'none')+
+        '</span></button>'+
+    '</div>';
+  }
+
+  function openSheet(c,mode){
+    openSheetId=c.id;sheetMode=mode||'card';
+    var extra=(sheetMode==='time')?breakdownHTML(c):(sheetMode==='qc')?qcHTML(c):actsHTML(c);
+    sheetEl.className='sheet open m-'+sheetMode;
+    sheetEl.innerHTML='<button class="close" aria-label="Close">\u00d7</button>'+
+      modeTabsHTML(c)+cardFaceHTML(c,true,extra);
+    scrim.classList.add('open');
+    sheetEl.querySelector('.close').onclick=closeSheet;
+    Array.prototype.forEach.call(sheetEl.querySelectorAll('.smode'),function(b){
+      b.onclick=function(ev){ev.stopPropagation();openSheet(c,b.getAttribute('data-m'));};
+    });
+    wireSheet(c);
+  }
+  function closeSheet(){
+    openSheetId=null;sheetMode='card';
+    sheetEl.className='sheet';scrim.classList.remove('open');
+  }
+  scrim.addEventListener('click',closeSheet);
+
+  function actsHTML(c){
+    var q=encodeURIComponent(c.part||'');
+    var mine=isMine(c)&&role!=='viewer';
+    var a='';
+    if(mine){
+      a+=isRunning(c)
+        ? '<button class="act stop" data-do="out"><span class="an">Clock out</span>'+
+          '<span class="ad">Running '+fmtHMS(totalMs(c))+'</span></button>'
+        : '<button class="act go" data-do="in"><span class="an">Clock in</span>'+
+          '<span class="ad">Start the timer on this job</span></button>';
+      var nxt=(STAGES[c.stage]||{}).name;
+      a+=nxt
+        ? '<button class="act" data-do="next"><span class="an">Finish</span><span class="ad">Send to '+esc(nxt)+'</span></button>'
+        : '<button class="act" disabled><span class="an">Finish</span><span class="ad">Last station</span></button>';
+    }
+    // Time and Quality used to be buttons here; the tab strip above the card covers
+    // both, so duplicating them only made the card longer.
+    a+='<a class="act" href="'+QUOTE_TOOL+'?part='+q+'" target="_blank" rel="noopener">'+
+        '<span class="an">Quote</span><span class="ad">Open this part in the quote generator</span></a>'+
+      '<a class="act wide" href="'+esc(dropboxURL(c))+'" target="_blank" rel="noopener">'+
+        '<span class="an">Open files</span><span class="ad">JOBSHOP / '+esc(c.customer||'\u2014')+
+        ' / '+esc(c.part||'\u2014')+'</span></a>';
+    if(c.url){
+      a+='<a class="act wide ghost" href="'+esc(c.url)+'" target="_blank" rel="noopener">'+
+        '<span class="an">Open in Trello</span><span class="ad">Move the card, edit the description</span></a>';
+    }
+    if(!isMine(c)&&plain()){
+      a+='<div class="act wide ghost" style="cursor:default"><span class="an">Read only</span>'+
+        '<span class="ad">Sitting at '+esc((STAGES[c.stage-1]||{}).name||'\u2014')+', not your station</span></div>';
+    }
+    return '<div class="acts">'+a+'</div>';
+  }
+
+  function breakdownHTML(c){
+    var r=clocks[c.id];
+    var total=totalMs(c);
+    var body='';
+    if(!r||!r.sessions||!r.sessions.length){
+      body='<div class="none">No time logged.</div>';
+    }else{
+      var byOp={};
+      r.sessions.forEach(function(s){
+        var o=s.op||'Unassigned';
+        if(!byOp[o])byOp[o]={ms:0,parts:0,n:0};
+        byOp[o].ms+=s.ms;byOp[o].parts+=(s.parts||0);byOp[o].n++;
+      });
+      var max=Math.max.apply(null,Object.keys(byOp).map(function(o){return byOp[o].ms;}))||1;
+      body=Object.keys(byOp).map(function(o){
+        var d=byOp[o];
+        var pct=total>0?Math.round(d.ms/total*100):0;
+        return '<div class="seg '+o.toLowerCase()+'">'+
+          '<div class="sl"><span>'+esc(o)+' \u00b7 '+d.n+' session'+(d.n===1?'':'s')+
+            (d.parts?(' \u00b7 '+d.parts+' pcs'):'')+'</span>'+
+            '<b>'+fmtHours(d.ms)+' hrs \u00b7 '+pct+'%</b></div>'+
+          '<div class="track"><i style="width:'+Math.round(d.ms/max*100)+'%"></i></div></div>';
+      }).join('');
+      if(c.qty){
+        var done=partsDone(c);
+        var perPart=done>0?(total/done/3600000):0;
+        body+='<div class="none" style="margin-top:4px">'+done+' of '+c.qty+' parts logged'+
+          (perPart>0?(' \u00b7 '+perPart.toFixed(2)+' hrs per part'):'')+'</div>';
+      }
+    }
+    return '<div class="brk">'+
+      '<div class="bh">Time breakdown <span>'+fmtHours(total)+' hrs</span></div>'+
+      body+
+      paceBarHTML(c,true)+
+      '<div class="qrow2">'+
+        '<input id="qHrs" type="number" min="0" step="0.25" inputmode="decimal" '+
+          'placeholder="Quoted hours" value="'+(quotedHrs(c)!=null?quotedHrs(c):'')+'">'+
+        '<button data-do="setquote">Set</button>'+
+      '</div>'+
+      '<div class="logrow">'+
+        '<select id="lOp">'+opsFor(c).map(function(o){return '<option>'+o+'</option>';}).join('')+'</select>'+
+        '<input id="lParts" type="number" min="1" step="1" inputmode="numeric" placeholder="Parts finished">'+
+        '<button data-do="logparts">Log</button>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function qcHTML(c){
+    var r=qrec(c);
+    var done=partsDone(c), qty=(c.qty!=null?c.qty:null);
+    var fails=qcFails(c), passes=r.checks.length-fails;
+
+    // identity strip — every field here is pulled off the card, never retyped
+    var ident='<div class="qident">'+
+      '<div><span>Part</span><b>'+esc(c.part||'\u2014')+'</b></div>'+
+      '<div><span>Rev</span><b>'+esc(c.rev||'\u2014')+'</b></div>'+
+      '<div><span>PO</span><b>'+esc(c.po||'\u2014')+'</b></div>'+
+      '<div><span>WO</span><b>'+esc(c.wo||'\u2014')+'</b></div>'+
+      '<div><span>Customer</span><b>'+esc(c.customer||'\u2014')+'</b></div>'+
+      '<div><span>Qty</span><b>'+(qty!=null?esc(qty):'\u2014')+'</b></div>'+
+    '</div>';
+
+    var rows;
+    if(!r.checks.length){
+      rows='<div class="none" title="Leave tolerance blank for a visual check">No checks yet.</div>';
+    }else{
+      rows='<div class="qlist">'+r.checks.map(function(k,i){
+        return '<div class="qrow '+k.verdict+'">'+
+          '<span class="qf">'+esc(k.feat)+'</span>'+
+          '<span class="qn">'+esc(k.nominal||'\u2014')+
+            (k.tol?(' \u00b1'+esc(k.tol)):'')+'</span>'+
+          '<span class="qa">'+esc(k.actual||'\u2014')+'</span>'+
+          '<span class="qv">'+(k.verdict==='fail'?'OUT':'IN')+'</span>'+
+          '<button class="qx" data-drop="'+i+'" title="Remove">\u00d7</button>'+
+        '</div>';
+      }).join('')+'</div>';
+    }
+
+    var tally='<div class="qtally">'+
+      '<b class="ok">'+passes+' in tol</b><b class="'+(fails?'bad':'')+'">'+fails+' out</b>'+
+      '<span>'+(r.insp||0)+' of '+(qty!=null?esc(qty):'?')+' pcs inspected'+
+        (done?(' \u00b7 '+done+' machined'):'')+'</span></div>';
+
+    var st=r.status;
+    var verdict='<div class="qverdict">'+
+      '<button class="qbtn pass'+(st==='pass'?' on':'')+'" data-do="qcpass">Accept</button>'+
+      '<button class="qbtn fail'+(st==='fail'?' on':'')+'" data-do="qcfail">Reject</button>'+
+    '</div>';
+
+    return '<div class="brk qc">'+
+      '<div class="bh">Inspection <span class="'+st+'">'+
+        (st==='pass'?'ACCEPTED':st==='fail'?'REJECTED':st==='open'?'IN PROGRESS':'NOT STARTED')+
+      '</span></div>'+
+      ident+rows+tally+
+      '<div class="qadd">'+
+        '<input id="qFeat" type="text" placeholder="Feature \u2014 e.g. \u00d8.500 bore">'+
+        '<input id="qNom" type="text" inputmode="decimal" placeholder="Nominal">'+
+        '<input id="qTol" type="text" inputmode="decimal" placeholder="\u00b1Tol">'+
+        '<input id="qAct" type="text" inputmode="decimal" placeholder="Actual">'+
+        '<button data-do="qcadd">Add</button>'+
+      '</div>'+
+      '<div class="qadd two">'+
+        '<input id="qInsp" type="number" min="0" step="1" inputmode="numeric" '+
+          'placeholder="Pcs inspected" value="'+(r.insp||'')+'">'+
+        '<button data-do="qcinsp">Set</button>'+
+      '</div>'+
+      verdict+
+    '</div>';
+  }
+
+  function wireSheet(c){
+    Array.prototype.forEach.call(sheetEl.querySelectorAll('[data-do],[data-open]'),function(b){
+      b.onclick=function(ev){
+        ev.stopPropagation();
+        var a=b.getAttribute('data-do')||('time');
+        if(a==='in'){clockIn(c);openSheet(c,'card');}
+        else if(a==='out'){clockOut(c);openSheet(c,'card');}
+        else if(a==='next'){advance(c);}
+        else if(a==='time'){openSheet(c,'time');}
+        else if(a==='qc'){openSheet(c,'qc');}
+        else if(a==='setquote'){
+          var h=parseFloat(sheetEl.querySelector('#qHrs').value);
+          setQuoted(c,isNaN(h)?null:h);
+          openSheet(c,'time');
+        }
+        else if(a==='back'){openSheet(c,'card');}
+        else if(a==='qcadd'){
+          var feat=sheetEl.querySelector('#qFeat').value.trim();
+          if(!feat){sheetEl.querySelector('#qFeat').focus();return;}
+          addCheck(c,feat,
+            sheetEl.querySelector('#qNom').value.trim(),
+            sheetEl.querySelector('#qAct').value.trim(),
+            sheetEl.querySelector('#qTol').value.trim());
+          openSheet(c,'qc');
+        }
+        else if(a==='qcinsp'){
+          var n=parseInt(sheetEl.querySelector('#qInsp').value,10);
+          setInspected(c,isNaN(n)||n<0?0:n);
+          openSheet(c,'qc');
+        }
+        else if(a==='qcpass'){setQCVerdict(c,'pass');openSheet(c,'qc');}
+        else if(a==='qcfail'){setQCVerdict(c,'fail');openSheet(c,'qc');}
+        else if(a==='logparts'){
+          var op=sheetEl.querySelector('#lOp').value;
+          var n=parseInt(sheetEl.querySelector('#lParts').value,10);
+          if(isNaN(n)||n<1){sheetEl.querySelector('#lParts').focus();return;}
+          logParts(c,op,n);
+          openSheet(c,'time');
+        }
+      };
+    });
+    Array.prototype.forEach.call(sheetEl.querySelectorAll('[data-drop]'),function(b){
+      b.onclick=function(ev){
+        ev.stopPropagation();
+        dropCheck(c,parseInt(b.getAttribute('data-drop'),10));
+        openSheet(c,'qc');
+      };
+    });
+  }
+
+  // ---- LANES -----------------------------------------------------
+  STAGES.forEach(function(s,i){
+    var lane=document.createElement('div');
+    lane.className='lane';
+    lane.innerHTML='<button class="node"></button><div class="fanUp"></div><div class="fanDown"></div>';
+    flow.appendChild(lane);
+    laneEls.push(lane);
+    lane.querySelector('.node').addEventListener('click',function(ev){
+      ev.stopPropagation();
+      if(window.innerWidth<=700&&!openState[i]){
+        STAGES.forEach(function(x,j){if(j!==i)openState[j]=false;});
+        renderAll();
+      }
+      openState[i]=!openState[i];
+      renderLane(i);
+    });
+    nodeEls.push(lane.querySelector('.node'));
+  });
+
+  // Hover and wheel hit-test against lane geometry, with one exception: if the
+  // pointer is actually on a card, that card's own lane wins. The fan spreads far
+  // enough right to overhang the next lane, so pure x-geometry meant reaching for
+  // the second card in a stack flipped the peek to the neighbouring station and
+  // the stack you were reaching for vanished out from under the cursor.
+  // How much of a lane's width counts as its "capture" zone, centred on the node.
+  // Below 1.0 this leaves a dead gutter between lanes: drifting into the gutter
+  // holds whatever lane you're already on instead of immediately switching. Lower
+  // = stickier / harder to leave a lane by accident. 1.0 restores edge-to-edge.
+  var LANE_CORE=0.45;
+  // Grace margin in px around the fan's real extent. Bigger = more forgiving when
+  // the pointer slips off the edge of a card. X is generous, Y deliberately tight —
+  // the fan should own the space beside the cards, not the rail above them.
+  var FAN_PAD=34;
+  var FAN_PAD_Y=10;
+
+  // Fan geometry lives in one place so the hit zone and the drawing can't drift
+  // apart. CARD_W must match .card width in the stylesheet.
+  var CARD_W=216;
+  function fanMetrics(i){
+    var built=laneCards[i]||[];
+    var n=built.length;
+    if(!n)return null;
+    var openNow=!!openState[i];
+    return {
+      n:n, open:openNow,
+      reveal:openNow?1:0.78,
+      step:openNow?(n>6?26:34):30,
+      base:openNow?30:24,
+      scale:openNow?1:0.86
+    };
+  }
+  // Horizontal extent the fan actually occupies on screen, plus the vertical band
+  // the cards really sit in. The span is generous left-to-right — that's the whole
+  // point — but it must not claim the empty air above or below the stack, or the
+  // rail itself stops responding while a wide fan is open.
+  function fanSpan(i){
+    var m=fanMetrics(i);
+    if(!m)return null;
+    if(!(openState[i]||peekState[i]))return null;
+    var built=laneCards[i];
+    var fi=((focusIdx[i]||0)%m.n+m.n)%m.n;
+    var fEl=built[fi]&&built[fi].el;
+    if(!fEl)return null;
+    var fr=fEl.getBoundingClientRect();
+    if(!fr.height)return null;
+
+    var r=laneEls[i].getBoundingClientRect();
+    var cx=r.left+r.width/2;
+    var minTx=(0-fi)*m.step*m.reveal;
+    var maxTx=(m.n-1-fi)*m.step*m.reveal;
+    var half=(CARD_W*m.scale)/2;
+
+    // cards step away from the centre line as they get further from focus
+    var maxAd=Math.max(fi,m.n-1-fi);
+    var spread=maxAd*7*m.reveal;
+    var up=(STAGES[i].dir==='up');
+    return {
+      left:cx+minTx-half, right:cx+maxTx+half,
+      top:   fr.top    - (up?spread:0) - FAN_PAD_Y,
+      bottom:fr.bottom + (up?0:spread) + FAN_PAD_Y
+    };
+  }
+
+  function currentLane(){
+    for(var j=0;j<STAGES.length;j++)if(peekState[j])return j;
+    for(var k=0;k<STAGES.length;k++)if(openState[k])return k;
+    return -1;
+  }
+  function laneAt(clientX,sticky){
+    var cur=-1;
+    for(var i=0;i<laneEls.length;i++){
+      var r=laneEls[i].getBoundingClientRect();
+      if(clientX>=r.left&&clientX<r.right){cur=i;break;}
+    }
+    if(cur<0)return -1;
+    var rr=laneEls[cur].getBoundingClientRect();
+    var inset=rr.width*(1-LANE_CORE)/2;
+    // Inside the core band: this lane takes the hover outright.
+    if(clientX>=rr.left+inset&&clientX<rr.right-inset)return cur;
+    // In the gutter: hold the lane we're already on rather than flipping. Only
+    // when nothing is active does a gutter position claim a lane at all.
+    if(sticky!=null&&sticky>=0)return sticky;
+    return cur;
+  }
+  function laneFor(e){
+    var el=e.target&&e.target.closest?e.target.closest('.card'):null;
+    if(el&&el._lane!=null) return el._lane;
+    var cur=currentLane();
+    // Anywhere over the open fan — including the gaps between cards and a grace
+    // margin past either end — stays with that lane. Sliding off the left edge of
+    // the focused card no longer dumps you into the previous station.
+    if(cur>=0){
+      var sp=fanSpan(cur);
+      if(sp&&e.clientX>=sp.left-FAN_PAD&&e.clientX<=sp.right+FAN_PAD&&
+            e.clientY>=sp.top&&e.clientY<=sp.bottom) return cur;
+    }
+    return laneAt(e.clientX,cur);
+  }
+  flow.addEventListener('mousemove',function(e){
+    var i=laneFor(e);
+    // Only the lanes whose peek state actually flipped get rebuilt. renderAll()
+    // here meant six lanes of DOM churn every time the pointer crossed a boundary.
+    for(var j=0;j<STAGES.length;j++){
+      var want=(j===i);
+      if(!!peekState[j]!==want){peekState[j]=want;renderLane(j);}
+    }
+    // Hover-to-browse. Deliberately driven from mousemove rather than each card's
+    // own mouseenter: focusing a card slides it to centre, which drops a different
+    // card under the cursor — with mouseenter that fires again and the stack
+    // shuffles on its own. mousemove only fires when the pointer really moves.
+    if(i<0)return;
+    var el=e.target&&e.target.closest?e.target.closest('.card'):null;
+    if(!el||el._lane!==i||el._idx==null)return;
+    if(focusIdx[i]===el._idx)return;
+    focusIdx[i]=el._idx;
+    positionLane(i,true);
+    clearTimeout(laneSettle[i]);
+    laneSettle[i]=setTimeout(function(){refreshFocusActs(i);},170);
+  });
+  // Click the empty board to close any open stage. Cards and nodes stop propagation
+  // themselves, so anything reaching here is genuinely background.
+  flow.addEventListener('click',function(e){
+    if(e.target.closest&&(e.target.closest('.card')||e.target.closest('.node')))return;
+    var changed=false;
+    for(var j=0;j<STAGES.length;j++){
+      if(openState[j]){openState[j]=false;changed=true;}
+    }
+    if(changed)renderAll();
+  });
+
+  flow.addEventListener('mouseleave',function(){
+    for(var j=0;j<STAGES.length;j++){
+      if(peekState[j]){peekState[j]=false;renderLane(j);}
+    }
+  });
+  // Wheel riffling: strictly one card per notch, in order. Browsers report wildly
+  // different deltaY per physical notch (3 on some trackpads, 300 on some mice), so
+  // dividing by a fixed notch size meant one flick could jump three cards — that's
+  // what read as random. Magnitude is now ignored entirely; only direction counts.
+  var wheelAcc={}, wheelRAF={}, wheelIdle={}, wheelLast={};
+  flow.addEventListener('wheel',function(e){
+    var i=laneFor(e);
+    if(i<0) return;
+    if(!(openState[i]||peekState[i])) return;
+    var n=stageCards(i+1).length;
+    if(n<2) return;
+    e.preventDefault();
+
+    var now=(window.performance&&performance.now)?performance.now():Date.now();
+    // A gap means a new gesture: drop leftover delta so it can't carry over.
+    if(now-(wheelLast[i]||0)>160) wheelAcc[i]=0;
+    wheelLast[i]=now;
+
+    wheelAcc[i]=(wheelAcc[i]||0)+(e.deltaMode===1?e.deltaY*16:e.deltaY);
+
+    var TH=40;
+    if(Math.abs(wheelAcc[i])<TH) return;
+    var dir=wheelAcc[i]>0?1:-1;
+    wheelAcc[i]=0;                       // reset, don't subtract — no accumulation
+    focusIdx[i]=(((focusIdx[i]||0)+dir)%n+n)%n;
+
+    if(!wheelRAF[i]){
+      wheelRAF[i]=requestAnimationFrame(function(){
+        wheelRAF[i]=null;
+        positionLane(i,true);
+      });
+    }
+    clearTimeout(wheelIdle[i]);
+    wheelIdle[i]=setTimeout(function(){refreshFocusActs(i);},160);
+  },{passive:false});
+
+  // touch: swipe sideways for stages, up/down to rifle cards
+  (function(){
+    var sx=0,sy=0,st=0,go=false;
+    flow.addEventListener('touchstart',function(e){
+      if(e.touches.length!==1)return;
+      sx=e.touches[0].clientX;sy=e.touches[0].clientY;st=Date.now();go=true;
+    },{passive:true});
+    flow.addEventListener('touchend',function(e){
+      if(!go)return;go=false;
+      var t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;
+      if(Date.now()-st>700)return;
+      var adx=Math.abs(dx),ady=Math.abs(dy);
+      if(adx<42&&ady<42)return;
+      var oi=-1;
+      for(var i=0;i<STAGES.length;i++){if(openState[i]){oi=i;break;}}
+      if(adx>ady){
+        var next=(oi<0)?(dx<0?0:STAGES.length-1):oi+(dx<0?1:-1);
+        if(next<0||next>=STAGES.length)return;
+        STAGES.forEach(function(x,j){openState[j]=false;});
+        openState[next]=true;
+        renderAll();
+      }else if(oi>=0){
+        var n=stageCards(oi+1).length;
+        if(n<2)return;
+        focusIdx[oi]=(((focusIdx[oi]||0)+(dy<0?1:-1))%n+n)%n;
+        positionLane(oi,true);
+        setTimeout(function(){refreshFocusActs(oi);},170);
+      }
+    },{passive:true});
+  })();
+
+  // Lane rendering is split in two on purpose:
+  //   renderLane(i)   — rebuilds the card DOM. Only when the card set or state changes.
+  //   positionLane(i) — moves what's already there. Runs on every riffle tick.
+  // The old code rebuilt every card's innerHTML on each wheel notch, which is why
+  // flipping through a stack stuttered: it was re-parsing HTML mid-animation.
+  var laneCards={};   // lane index -> [{el, card}]
+
+  function positionLane(i,riffle){
+    var built=laneCards[i];
+    if(!built||!built.length)return;
+    var s=STAGES[i];
+    var openNow=!!openState[i];
+    var showing=openNow||!!peekState[i];
+    var n=built.length;
+    var fi=((focusIdx[i]||0)%n+n)%n;
+    paintCount(i,n);
+
+    // Hiding is a fade, not a teardown. The DOM stays built so coming back to a
+    // lane is a transition rather than a rebuild — that's what made hovering
+    // across the board feel like it was catching.
+    if(!showing){
+      for(var h=0;h<n;h++){
+        var eh=built[h].el;
+        eh.classList.remove('show','riffle');
+        eh.style.transitionDelay='0ms';
+        // positionLane writes opacity as an inline style when showing, and an inline
+        // style outranks the class rule — so dropping .show alone left the cards
+        // sitting there fully visible. Clear the inline value too.
+        eh.style.opacity='0';
+        eh.style.pointerEvents='none';
+      }
+      return;
+    }
+
+    // Peek used to be a preview you couldn't touch. Now it's a browsing surface,
+    // so the fan opens wider — each card needs a sliver big enough to aim at.
+    var m=fanMetrics(i);
+    var reveal=m.reveal, step=m.step, base=m.base;
+
+
+    for(var k=0;k<n;k++){
+      var elc=built[k].el, isFocus=(k===fi);
+      var d=k-fi, ad=Math.abs(d);
+      elc.style.zIndex=String(60-ad);
+      var tx=d*step*reveal;
+      var ty=(base+ad*7)*reveal*(s.dir==='up'?-1:1);
+      var rot=d*(openNow?2.5:2)*reveal;
+      var scale=m.scale*(isFocus?1:0.94);
+      var op=isFocus?1:(openNow?0.94:(ad>3?0.55:0.8));
+
+      // During a riffle every card moves at once with no stagger — the stagger is
+      // what made fast scrolling feel like wading. Only the first reveal stacks.
+      elc.style.transitionDelay=riffle?'0ms':(ad*22)+'ms';
+      elc.classList.toggle('riffle',!!riffle);
+      elc.classList.toggle('focus',isFocus);
+      elc.style.transform='translate(calc(-50% + '+tx+'px), '+ty+'px) rotate('+rot+'deg) scale('+scale+')';
+      elc.style.opacity=String(op);
+      elc.style.pointerEvents='';   // clears the inline block set while hidden
+      elc.classList.add('show');
+    }
+  }
+
+  var laneSig={}, laneSettle={};
+  function paintCount(i,total){
+    var cnt=nodeEls[i]&&nodeEls[i].querySelector('.cnt');
+    if(!cnt)return;
+    var showing=openState[i]||peekState[i];
+    if(showing&&total>1){
+      var fi=((focusIdx[i]||0)%total+total)%total;
+      cnt.textContent=(fi+1)+'/'+total;
+      cnt.classList.add('pos');
+    }else{
+      cnt.textContent=String(total);
+      cnt.classList.remove('pos');
+    }
+  }
+  function sigOf(cards){
+    return cards.map(function(c){
+      return c.id+':'+c.stage+':'+(isRunning(c)?1:0)+':'+partsDone(c)+':'+(hits[c.id]?1:0)+
+             ':'+(artMode[c.id]||'photo');
+    }).join('|');
+  }
+
+  function renderLane(i){
+    var s=STAGES[i],lane=laneEls[i],node=nodeEls[i];
+    var cards=stageCards(i+1);
+    var late=cards.filter(isLate).length;
+    var mineStage=roleDef().stages.indexOf(i+1)>=0&&plain();
+
+    node.className='node'+(openState[i]?' on':'')+(peekState[i]&&!openState[i]?' peek':'')+
+                   (mineStage?' mine':'');
+    node.innerHTML=(late?'<span class="late"></span>':'')+
+      '<span class="plate"><span class="lbl">'+s.name+'</span>'+
+      '<span class="cnt">'+cards.length+'</span></span><span class="dot"></span>';
+    // position-in-stack moved into the node plate. It used to be a floating box
+    // above the fan, which sat right on top of the timeline rail.
+    paintCount(i,cards.length);
+
+    // Nothing about the cards changed — this is just a show/hide. Reposition the
+    // existing DOM instead of rebuilding it, so peeking is a pure transition.
+    var sig=sigOf(cards);
+    if(laneSig[i]===sig&&laneCards[i]&&laneCards[i].length===cards.length&&cards.length){
+      positionLane(i,false);
+      return;
+    }
+    laneSig[i]=sig;
+
+    var up=lane.querySelector('.fanUp'),down=lane.querySelector('.fanDown');
+    up.innerHTML='';down.innerHTML='';
+    laneCards[i]=[];
+    var host=(s.dir==='up')?up:down;
+    if(!(openState[i]||peekState[i])){laneSig[i]=null;return;}
+
+    if(!cards.length){
+      var e=document.createElement('div');
+      e.className='laneempty';e.textContent='No cards.';
+      host.appendChild(e);
+      return;
+    }
+
+    var n=cards.length;
+    var fi=((focusIdx[i]||0)%n+n)%n;
+
+    cards.forEach(function(c,idx){
+      var elc=document.createElement('div');
+      var mine=isMine(c)&&plain();
+      var notMine=!isMine(c)&&plain();
+      elc.className='card'+(isLate(c)?' late':'')+
+                    (mine?' mine':'')+(notMine?' notmine':'')+(hits[c.id]?' hit':'');
+      elc.innerHTML=cardFaceHTML(c,false,(idx===fi)?miniActsHTML(c):'');
+      elc._cid=c.id;
+      elc._idx=idx;
+      elc._lane=i;
+      elc.addEventListener('click',function(ev){
+        if(ev.target.closest('[data-mini]'))return;
+        ev.stopPropagation();
+        openSheet(c,ev.target.closest('[data-open="time"]')?'time':'card');
+      });
+      host.appendChild(elc);
+
+      Array.prototype.forEach.call(elc.querySelectorAll('[data-mini]'),function(b){
+        b.onclick=function(ev){
+          ev.stopPropagation();
+          var a=b.getAttribute('data-mini');
+          if(a==='in')clockIn(c);
+          else if(a==='out')clockOut(c);
+          else if(a==='status')openSheet(c,'time');
+        };
+      });
+
+      laneCards[i].push({el:elc,card:c});
+    });
+
+    // first paint: let the browser see the start state, then fan out with stagger
+    requestAnimationFrame(function(){positionLane(i,false);});
+  }
+
+  // The focused card carries the clock buttons. Rebuilding that markup mid-riffle is
+  // what we're avoiding, so it's deferred until the stack stops moving.
+  function refreshFocusActs(i){
+    var built=laneCards[i];
+    if(!built||!built.length)return;
+    var n=built.length, fi=((focusIdx[i]||0)%n+n)%n;
+    for(var k=0;k<n;k++){
+      var b=built[k], has=!!b.el.querySelector('.mini-acts');
+      if(k===fi&&!has)b.el.innerHTML=cardFaceHTML(b.card,false,miniActsHTML(b.card));
+      else if(k!==fi&&has)b.el.innerHTML=cardFaceHTML(b.card,false,'');
+      else continue;
+      (function(el,c){
+        Array.prototype.forEach.call(el.querySelectorAll('[data-mini]'),function(bt){
+          bt.onclick=function(ev){
+            ev.stopPropagation();
+            var a=bt.getAttribute('data-mini');
+            if(a==='in')clockIn(c);
+            else if(a==='out')clockOut(c);
+            else if(a==='status')openSheet(c,'time');
+          };
+        });
+      })(b.el,b.card);
+    }
+  }
+
+  function renderAll(){STAGES.forEach(function(s,i){renderLane(i);});}
+
+  // ---- SEARCH ----------------------------------------------------
+  var sscrim=document.getElementById('sscrim');
+  var spal=document.getElementById('spal');
+  var sInput=document.getElementById('sInput');
+  var sRes=document.getElementById('sRes');
+  var sFlat=[],sSel=0,sOpen=false;
+
+  function openSearch(){
+    sOpen=true;
+    sscrim.classList.add('open');spal.classList.add('open');
+    sInput.value='';sSel=0;
+    runSearch('');
+    setTimeout(function(){sInput.focus();},30);
+  }
+  function closeSearch(){
+    sOpen=false;
+    sscrim.classList.remove('open');spal.classList.remove('open');
+  }
+  sscrim.addEventListener('click',closeSearch);
+  document.getElementById('searchBtn').onclick=openSearch;
+
+  function buildResults(q){
+    q=q.trim().toLowerCase();
+    var groups=[
+      {key:'Parts',items:[]},{key:'Work orders',items:[]},
+      {key:'POs',items:[]},{key:'Invoices',items:[]},{key:'Customers',items:[]}
+    ];
+    if(!q){
+      // no query yet: offer whatever is late, as a useful default
+      CARDS.filter(isLate).slice(0,8).forEach(function(c){
+        groups[0].items.push({label:c.part||c.wo,meta:'PO '+(c.po||'\u2014')+' \u00b7 '+
+          Math.abs(c.days)+'d over',note:(STAGES[c.stage-1]||{}).name,ids:[c.id]});
+      });
+      return groups.filter(function(g){return g.items.length;});
+    }
+    var seenPO={},seenCust={};
+    CARDS.forEach(function(c){
+      if((c.part||'').toLowerCase().indexOf(q)>=0){
+        groups[0].items.push({label:c.part,meta:(c.customer||'')+' \u00b7 PO '+(c.po||'\u2014')+
+          ' \u00b7 qty '+(c.qty!=null?c.qty:'\u2014'),note:(STAGES[c.stage-1]||{}).name,ids:[c.id]});
+      }
+      if((c.wo||'').toLowerCase().indexOf(q)>=0){
+        groups[1].items.push({label:c.wo,meta:(c.part||'')+' \u00b7 '+(c.customer||''),
+          note:(STAGES[c.stage-1]||{}).name,ids:[c.id]});
+      }
+      if(c.invoice&&String(c.invoice).toLowerCase().indexOf(q)>=0){
+        groups[3].items.push({label:'INV '+c.invoice,meta:(c.part||'')+' \u00b7 '+(c.customer||''),
+          note:(STAGES[c.stage-1]||{}).name,ids:[c.id]});
+      }
+      if(c.po&&String(c.po).toLowerCase().indexOf(q)>=0&&!seenPO[c.po]){
+        seenPO[c.po]=1;
+        var sib=CARDS.filter(function(x){return x.po===c.po;});
+        groups[2].items.push({label:'PO '+c.po,meta:sib.map(function(x){return x.part;}).join(', '),
+          note:sib.length+' card'+(sib.length===1?'':'s'),ids:sib.map(function(x){return x.id;})});
+      }
+      if(c.customer&&c.customer.toLowerCase().indexOf(q)>=0&&!seenCust[c.customer]){
+        seenCust[c.customer]=1;
+        var mine=CARDS.filter(function(x){return x.customer===c.customer;});
+        groups[4].items.push({label:c.customer,meta:mine.length+' open card'+(mine.length===1?'':'s'),
+          note:'',ids:mine.map(function(x){return x.id;})});
+      }
+    });
+    return groups.filter(function(g){return g.items.length;});
+  }
+
+  function runSearch(q){
+    var groups=buildResults(q);
+    sFlat=[];
+    if(!groups.length){
+      sRes.innerHTML='<div class="sempty">Nothing matches that.</div>';
+      return;
+    }
+    var html='';
+    groups.forEach(function(g){
+      html+='<div class="sgrp">'+esc(g.key)+'</div>';
+      g.items.slice(0,8).forEach(function(it){
+        var idx=sFlat.length;
+        sFlat.push(it);
+        html+='<div class="sitem" data-i="'+idx+'">'+
+          '<span class="sk">'+esc(it.label)+'</span>'+
+          '<span class="sm">'+esc(it.meta||'')+'</span>'+
+          '<span class="sn">'+esc(it.note||'')+'</span></div>';
+      });
+    });
+    sRes.innerHTML=html;
+    if(sSel>=sFlat.length) sSel=0;
+    paintSel();
+    Array.prototype.forEach.call(sRes.querySelectorAll('.sitem'),function(el){
+      el.onclick=function(){ sSel=+el.getAttribute('data-i'); choose(); };
+    });
+  }
+  function paintSel(){
+    Array.prototype.forEach.call(sRes.querySelectorAll('.sitem'),function(el){
+      var on=(+el.getAttribute('data-i')===sSel);
+      el.classList.toggle('sel',on);
+      if(on&&el.scrollIntoView) el.scrollIntoView({block:'nearest'});
+    });
+  }
+  function choose(){
+    var it=sFlat[sSel];
+    if(!it)return;
+    closeSearch();
+    gotoCards(it.ids);
+  }
+
+  // Bring the timeline to a card (or a PO's whole set) and mark them.
+  function gotoCards(ids){
+    hits={};
+    ids.forEach(function(id){hits[id]=1;});
+    setView('timeline');
+    var stagesHit={};
+    ids.forEach(function(id){
+      var c=byId(id);
+      if(c) stagesHit[c.stage]=1;
+    });
+    STAGES.forEach(function(s,i){ openState[i]=!!stagesHit[i+1]; });
+    // focus the first hit inside each opened stage
+    Object.keys(stagesHit).forEach(function(st){
+      var list=stageCards(+st);
+      for(var i=0;i<list.length;i++){
+        if(hits[list[i].id]){ focusIdx[+st-1]=i; break; }
+      }
+    });
+    renderAll();
+    if(ids.length===1){
+      var c=byId(ids[0]);
+      if(c) setTimeout(function(){openSheet(c,'card');},260);
+    } else {
+      toast(ids.length+' cards across '+Object.keys(stagesHit).length+' stage'+
+            (Object.keys(stagesHit).length===1?'':'s'));
+    }
+    setTimeout(function(){hits={};renderAll();},6000);
+  }
+
+  sInput.addEventListener('input',function(){sSel=0;runSearch(sInput.value);});
+  sInput.addEventListener('keydown',function(e){
+    if(e.key==='ArrowDown'){e.preventDefault();sSel=Math.min(sSel+1,sFlat.length-1);paintSel();}
+    else if(e.key==='ArrowUp'){e.preventDefault();sSel=Math.max(sSel-1,0);paintSel();}
+    else if(e.key==='Enter'){e.preventDefault();choose();}
+    else if(e.key==='Escape'){e.preventDefault();closeSearch();}
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){ if(sOpen)closeSearch(); else closeSheet(); return; }
+    var typing=/^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName||''));
+    if(!sOpen&&!typing&&(e.key==='/'||((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'))){
+      e.preventDefault();openSearch();
+    }
+  });
+  // terminal shell can hand us a card to jump to
+  window.addEventListener('message',function(e){
+    var d=e.data||{};
+    if(d.type==='sr:focusCard'&&d.id) gotoCards([d.id]);
+    if(d.type==='sr:search') openSearch();
+  });
+
+  // ---- DASHBOARD -------------------------------------------------
+  function priority(a,b){
+    if(isRunning(a)!==isRunning(b))return isRunning(a)?-1:1;
+    var ad=(a.days==null)?9999:a.days,bd=(b.days==null)?9999:b.days;
+    return ad-bd;
+  }
+  // Dashboard sort. Due date is the default because it's the only ordering that
+  // answers "what do I touch next"; the others are for finding things. A running
+  // clock always floats to the top regardless of sort — you need to see what
+  // you're on.
+  var dashSort=lsGet('sr_dsort','due');
+  function byDue(a,b){
+    var ad=(a.days==null)?9999:a.days,bd=(b.days==null)?9999:b.days;
+    return ad-bd;
+  }
+  function txt(v){return String(v==null?'':v).toLowerCase();}
+  var SORTS={
+    due:      byDue,
+    customer: function(a,b){ return txt(a.customer).localeCompare(txt(b.customer))||byDue(a,b); },
+    po:       function(a,b){ return txt(a.po).localeCompare(txt(b.po),undefined,{numeric:true})||byDue(a,b); },
+    stage:    function(a,b){ return (a.stage-b.stage)||byDue(a,b); }
+  };
+  function dashCompare(a,b){
+    if(isRunning(a)!==isRunning(b))return isRunning(a)?-1:1;
+    return (SORTS[dashSort]||byDue)(a,b);
+  }
+  // Group heading for the current sort — null means one flat list.
+  function groupKey(c){
+    if(dashSort==='stage')    return (STAGES[c.stage-1]||{}).name||'';
+    if(dashSort==='customer') return c.customer||'No customer';
+    if(dashSort==='po')       return 'PO '+(c.po||'\u2014');
+    return null;
+  }
+  function renderDash(){
+    var r=roleDef();
+    var mine=CARDS.filter(function(c){return isMine(c)&&c.active;}).sort(dashCompare);
+    document.getElementById('dTitle').textContent=r.label;
+    var lateN=mine.filter(isLate).length;
+    document.getElementById('dSub').textContent=
+      r.stages.length===0 ? '' :
+      mine.length+' open'+(lateN?(' \u00b7 '+lateN+' late'):'');
+
+    var host=document.getElementById('dList');
+    if(!mine.length){
+      host.innerHTML='<div class="dempty">Nothing at your station.</div>';
+      return;
+    }
+    host.innerHTML='';
+    var lastGrp=null;
+    mine.forEach(function(c){
+      // Heading whenever the group changes. Due-date sort has no groups —
+      // inserting one per date would just be noise.
+      var gk=groupKey(c);
+      if(gk!==null&&gk!==lastGrp){
+        lastGrp=gk;
+        var h=document.createElement('div');
+        h.className='dgrp'; h.textContent=gk;
+        host.appendChild(h);
+      }
+      var row=document.createElement('div');
+      row.className='drow'+(isRunning(c)?' running':'');
+      var nxt=(STAGES[c.stage]||{}).name;
+      var done=partsDone(c);
+      row.innerHTML=
+        '<div class="dstripe"><span>'+esc(c.wo)+'</span></div>'+
+        '<div class="in"><div class="top">'+
+          '<div class="who"><div class="dpart">'+esc(c.part||c.name||'\u2014')+'</div>'+
+            '<div class="meta">PO '+esc(c.po||'\u2014')+' \u00b7 '+esc(c.customer||'\u2014')+
+              ' \u00b7 '+esc((STAGES[c.stage-1]||{}).name||'')+'<br>'+
+              done+' / '+esc(c.qty!=null?c.qty:'?')+' parts \u00b7 '+fmtHours(totalMs(c))+' hrs \u00b7 '+
+              esc(dueText(c))+'</div></div>'+
+          '<div class="timer" data-do="time"><span data-clock="'+esc(c.id)+'">'+fmtHMS(totalMs(c))+
+            '</span><small>'+(isRunning(c)?'RUNNING':'LOGGED')+'</small></div>'+
+        '</div>'+
+        (flagsHTML(c)?'<div class="flags">'+flagsHTML(c)+'</div>':'')+
+        paceBarHTML(c,false)+
+        '<div class="btns">'+
+          (isRunning(c)
+            ? '<button class="act stop" data-do="out"><span class="an">Clock out</span><span class="ad">Stop the timer</span></button>'
+            : '<button class="act go" data-do="in"><span class="an">Clock in</span><span class="ad">Start the timer</span></button>')+
+          (nxt
+            ? '<button class="act" data-do="next"><span class="an">Finish</span><span class="ad">Send to '+esc(nxt)+'</span></button>'
+            : '<button class="act" disabled><span class="an">Finish</span><span class="ad">Last station</span></button>')+
+          '<button class="act wide ghost" data-do="open"><span class="an">Card</span>'+
+            '<span class="ad">Full card, quote and files</span></button>'+
+        '</div></div>';
+      Array.prototype.forEach.call(row.querySelectorAll('[data-do]'),function(b){
+        b.onclick=function(){
+          var a=b.getAttribute('data-do');
+          if(a==='in')clockIn(c);
+          else if(a==='out')clockOut(c);
+          else if(a==='next')advance(c);
+          else if(a==='time')openSheet(c,'time');
+          else if(a==='open')openSheet(c,'card');
+        };
+      });
+      host.appendChild(row);
+    });
+  }
+
+  setInterval(function(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-clock]'),function(t){
+      var c=byId(t.getAttribute('data-clock'));
+      if(c)t.textContent=fmtHMS(totalMs(c));
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.mb.live'),function(b){
+      var card=b.closest('.card');
+      if(!card||!card._cid)return;
+      var c=byId(card._cid);
+      if(c&&isRunning(c))b.textContent=fmtHMS(totalMs(c));
+    });
+  },1000);
+
+  function refreshViews(){
+    renderAll();renderDash();
+    if(openSheetId){var c=byId(openSheetId);if(c)openSheet(c,sheetMode);}
+  }
+
+  // ---- VIEW SWITCH -----------------------------------------------
+  var tabT=document.getElementById('tabTimeline'),tabD=document.getElementById('tabDash');
+  function setView(v){
+    view=v;
+    tabT.classList.toggle('on',v==='timeline');
+    tabD.classList.toggle('on',v==='dashboard');
+    document.getElementById('scTimeline').classList.toggle('on',v==='timeline');
+    document.getElementById('scDash').classList.toggle('on',v==='dashboard');
+    document.getElementById('btnAll').style.display=(v==='timeline')?'':'none';
+    setHint();
+    if(v==='dashboard')renderDash();else renderAll();
+  }
+  tabT.onclick=function(){setView('timeline');};
+  tabD.onclick=function(){setView('dashboard');};
+
+  function setHint(){
+    // tooltip, not page copy — the controls explain themselves on hover now
+    document.getElementById('hint').title=(view==='dashboard')
+      ? 'Your station\u2019s open jobs \u00b7 sort with the buttons above \u00b7 press / to search'
+      : 'Hover a stage to peek \u00b7 click to hold open \u00b7 wheel or swipe to rifle cards \u00b7 press / to search';
+  }
+
+  var roleSel=document.getElementById('roleSel');
+  roleSel.innerHTML=ROLES.map(function(r){
+    return '<option value="'+r.id+'"'+(r.id===role?' selected':'')+'>'+r.label+'</option>';
+  }).join('');
+  roleSel.onchange=function(){
+    role=roleSel.value;lsSet('sr_role',role);
+    var r=roleDef();
+    // Picking a station is a statement of intent: "this is my work". Jump
+    // straight to the queue for it rather than leaving the fan open and making
+    // them find it. Owner and View-only span everything, so there's nothing to
+    // zoom into — those stay on the timeline.
+    var focused=(r.stages.length>0 && r.stages.length<STAGES.length);
+    if(focused){
+      setView('dashboard');
+      // Open only this role's stages on the fan, so switching back to Timeline
+      // is already narrowed to their work instead of every stage at once.
+      STAGES.forEach(function(x,i){ openState[i]=(r.stages.indexOf(i+1)>=0); });
+    }
+    toast('Station set to '+r.label);
+    refreshViews();
+  };
+
+  // ---- dashboard sort buttons ----
+  Array.prototype.forEach.call(document.querySelectorAll('.dsort button'),function(b){
+    b.onclick=function(){
+      dashSort=b.getAttribute('data-sort');
+      lsSet('sr_dsort',dashSort);
+      Array.prototype.forEach.call(document.querySelectorAll('.dsort button'),function(x){
+        x.classList.toggle('son',x===b);
+      });
+      renderDash();
+    };
+    if(b.getAttribute('data-sort')===dashSort) b.classList.add('son');
+    else b.classList.remove('son');
+  });
+  document.getElementById('btnAll').addEventListener('click',function(){
+    var anyClosed=STAGES.some(function(s,i){return !openState[i];});
+    STAGES.forEach(function(s,i){openState[i]=anyClosed;});
+    this.textContent=anyClosed?'Close all':'Open all';
+    renderAll();
+  });
+
+  // ---- DEMO DATA (only when /api/trello can't be reached) ---------
+  function demoCards(){
+    var parts=[
+      ['100844','ROBERTS','15902','B',40],['100849','ROBERTS','15902','B',40],
+      ['100846','ROBERTS','15902','A',40],['100101','ROBERTS','15935','C',8],
+      ['100151','ROBERTS','15935','C',8],['TRAM_G2-01046','FTI','266677','A',12],
+      ['BRKT-9','FTI','266550','D',20],['SLV-2207','FTI','266612','A',30],
+      ['PIN-4410','ROBERTS','15948','B',150],['HSG-1180','FTI','266701','B',6],
+      ['CLP-3302','ROBERTS','15951','A',75],['MNT-0074','FTI','266688','C',18],
+      ['SPCR-119','ROBERTS','15944','A',200],['ADPT-556','FTI','266720','B',10],
+      ['ROD-8821','ROBERTS','15960','A',24],['CAM-0453','FTI','266733','E',4],
+      ['BSHG-207','ROBERTS','15955','B',90],['FLNG-330','FTI','266742','A',14],
+      ['KEY-1102','ROBERTS','15962','C',60],['GDE-7789','FTI','266750','B',22]
+    ];
+    var now=Math.floor(Date.now()/1000);
+    return parts.map(function(p,i){
+      var stage=1+Math.floor(Math.random()*6);
+      var days;
+      if(Math.random()<0.25)days=-(2+Math.floor(Math.random()*24));
+      else if(Math.random()<0.4)days=Math.floor(Math.random()*7);
+      else days=8+Math.floor(Math.random()*30);
+      var shipped=(stage===6);
+      var created=now-Math.floor(Math.random()*400*86400);
+      return {
+        id:created.toString(16)+String(1000+i),
+        part:p[0],name:p[0]+' \u2014 PO '+p[2],customer:p[1],po:p[2],rev:p[3],qty:p[4],
+        stage:stage,list:STAGES[stage-1].name,days:days,
+        active:!shipped,shipped:shipped,
+        invoice:(shipped&&Math.random()<0.6)?String(1053+i):null,
+        time:null,op1:null,photo:null,url:null,
+        quoted:+(p[4]*(0.06+Math.random()*0.22)+1.5).toFixed(2)
+      };
+    });
+  }
+
+  var IS_DEMO=false;   // module scope — patchJob must never write demo cards to the server
+  function ingest(cards,demo){
+    IS_DEMO=!!demo;
+    CARDS=cards.map(function(c){
+      var o={};
+      for(var k in c)if(Object.prototype.hasOwnProperty.call(c,k))o[k]=c[k];
+      o._created=cardCreated(c.id);
+      if(moves[o.id]){o.stage=moves[o.id];o.list=(STAGES[o.stage-1]||{}).name||o.list;}
+      return o;
+    });
+    assignWorkOrders(CARDS);
+    document.getElementById('sOpen').textContent=CARDS.filter(function(c){return c.active;}).length;
+    document.getElementById('sLate').textContent=CARDS.filter(isLate).length;
+    document.getElementById('sDemo').style.display=demo?'':'none';
+    refreshViews();
+  }
+
+  // ---- api/jobs.js -> CARDS shape --------------------------------------
+  // /api/trello already returns cards pre-enriched with stage/list/days/active/
+  // shipped. /api/jobs returns the locked schema straight — dueDate, numeric
+  // stage — so that enrichment happens here once, at the boundary, rather than
+  // teaching every render function two shapes.
+  function daysUntil(iso){
+    if(!iso) return null;
+    var due=new Date(iso); if(isNaN(due)) return null;
+    var ms=due.setHours(23,59,59,999)-Date.now();
+    return Math.floor(ms/86400000);
+  }
+  function jobToCard(j){
+    var stage=j.stage||1, shipped=(stage>=6);
+    // Adopt the server's clock record so a second device sees hours logged on
+    // the first. Skipped while this card has unsynced local work — that record
+    // is newer than anything the server holds, and overwriting it would lose
+    // the very hours retryUnsynced() is still trying to push.
+    if(j.clock && !unsynced[j.id]){
+      clocks[j.id]={
+        startedAt:j.clock.startedAt||null,
+        accumulated:j.clock.accumulated||0,
+        sessions:j.clock.sessions||[],
+        opTotals:j.clock.opTotals||{}
+      };
+      saveClocks();
+    }
+    return {
+      id:j.id, part:j.part, name:(j.part||'')+' \u2014 PO '+(j.po||''),
+      customer:j.customer, po:j.po, rev:j.rev, qty:j.qty,
+      stage:Math.min(stage,6), list:(STAGES[Math.min(stage,6)-1]||{}).name,
+      days:daysUntil(j.dueDate), active:!shipped, shipped:shipped,
+      invoice:j.invoice, time:j.time, op1:j.op1, op2:j.op2, rate:j.rate,
+      photo:j.photo, url:null, quoted:j.quoted
+    };
+  }
+
+  function load(){
+    return fetch('/api/jobs',{credentials:'same-origin'})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(function(jobs){
+        if(!Array.isArray(jobs)||!jobs.length)throw new Error('no jobs yet');
+        ingest(jobs.map(jobToCard),false);
+      })
+      .catch(function(){
+        return fetch('/api/trello',{credentials:'same-origin'})
+          .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+          .then(function(d){
+            if(d.error)throw new Error(d.error);
+            if(!d.cards||!d.cards.length)throw new Error('no cards');
+            ingest(d.cards,false);
+          });
+      })
+      .catch(function(){if(!CARDS.length)ingest(demoCards(),true);});
+  }
+
+  setHint();
+  load();
+  setInterval(function(){ load(); retryUnsynced(); },120000);
+})();
+</script>
