@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Backfill — Stealth R&D</title>
+<style>
+  :root{
+    --bg:#0A0A0B; --panel:#232327; --panel-2:#2C2C31; --sunken:#060606;
+    --line:#35353B; --line-hot:#45454D;
+    --ink:#CCCCCC; --dim:#9A9AA2; --faint:#6E6E77; --white:#F2F2F4;
+    --purple:#9233E6; --purple-lift:#A855F7; --purple-tint:rgba(146,51,230,.13);
+    --pass:#4ADE80; --warn:#F0B429; --fail:#F87171;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --disp:'Helvetica Neue',Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  /* Standalone tool — it owns its own background rather than showing through
+     a host page. Lifted charcoal, not pure black, with a slight top glow so the
+     header edge reads. */
+  html,body{min-height:100%}
+  body{margin:0;color:var(--ink);font-family:var(--mono);font-size:13px;
+       background:#0A0A0B;
+       background-image:radial-gradient(120% 80% at 50% -12%,#1A1A1E 0%,#0A0A0B 58%);
+       background-attachment:fixed}
+
+  .wrap{padding:14px 14px 40px;max-width:1100px}
+
+  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+        flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:4px}
+  .h1{font-family:var(--disp);font-size:24px;font-weight:700;color:var(--white);margin:0}
+  .h1 span{color:var(--purple-lift)}
+  .sub{font-size:11px;color:var(--faint);margin-top:3px}
+
+  /* progress — the only "how much is left" signal that matters here */
+  .prog{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .pbar{width:170px;height:6px;background:var(--sunken);border:1px solid var(--line);
+        position:relative;overflow:hidden}
+  .pbar i{position:absolute;inset:0 auto 0 0;background:var(--purple);
+          transition:width .35s cubic-bezier(.2,.8,.2,1)}
+  .pbar i.done{background:var(--pass)}
+  .pnum{font-family:var(--disp);font-size:15px;font-weight:700;color:var(--white);
+        white-space:nowrap}
+
+  .tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:13px 0 6px}
+  .tools button{font-family:var(--mono);font-size:10px;letter-spacing:.07em;padding:6px 10px;
+    background:none;border:1px solid var(--line);color:var(--faint);cursor:pointer}
+  .tools button:hover{color:var(--dim);border-color:var(--dim)}
+  .tools button.on{color:var(--purple-lift);border-color:var(--purple)}
+  .tools .sp{flex:1}
+  .tools .hint{font-size:10px;color:var(--faint)}
+
+  .grp{margin-top:20px}
+  .glbl{display:flex;align-items:baseline;gap:9px;font-family:var(--disp);font-size:13px;
+    font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--silver,#F2F2F4);
+    border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}
+  .glbl em{font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+    color:var(--faint);text-transform:none}
+  .glbl .fill{flex:1}
+  .glbl .tot{font-family:var(--mono);font-size:12px;color:var(--pass);letter-spacing:.04em}
+
+  /* one row per job. Grid so the columns line up across every group. */
+  .r{display:grid;grid-template-columns:1fr 96px 112px 104px 86px 22px;
+     gap:9px;align-items:center;padding:7px 2px;border-bottom:1px solid rgba(53,53,59,.5)}
+  .r:hover{background:rgba(255,255,255,.02)}
+  .r .part{font-family:var(--disp);font-size:15px;font-weight:700;color:var(--white);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .r .part small{display:block;font-family:var(--mono);font-size:9px;font-weight:400;
+    color:var(--faint);letter-spacing:.05em;margin-top:1px}
+  .r input{width:100%;background:#050506;border:1px solid var(--line);color:var(--white);
+    font-family:var(--mono);font-size:14px;padding:7px 8px;text-align:right}
+  .r input:focus{outline:none;border-color:var(--purple);background:#0E0E11}
+  .r input.has{border-color:rgba(74,222,128,.4)}
+  .r .line{font-family:var(--disp);font-size:14px;font-weight:700;color:var(--dim);text-align:right}
+  .r .line.on{color:var(--pass)}
+  .r .stg{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+    text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .r .dot{width:8px;height:8px;border-radius:50%;background:var(--line-hot);justify-self:center;
+    transition:background .2s}
+  .r .dot.saving{background:var(--warn)}
+  .r .dot.saved{background:var(--pass)}
+  .r .dot.err{background:var(--fail)}
+  .r.dad .part small{color:var(--warn)}
+
+  .colhd{display:grid;grid-template-columns:1fr 96px 112px 104px 86px 22px;gap:9px;
+    padding:0 2px 5px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint)}
+  .colhd span:nth-child(n+2){text-align:right}
+
+  .msg{padding:26px 18px;border:1px solid var(--line);background:var(--panel);
+    font-size:12px;color:var(--faint);line-height:1.6}
+  .msg b{color:var(--dim);font-weight:500}
+
+  .bulk{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:10px;color:var(--faint)}
+  .bulk input{width:82px;background:var(--sunken);border:1px solid var(--line);color:var(--white);
+    font-family:var(--mono);font-size:12px;padding:5px 7px;text-align:right}
+  .bulk button{font-size:9px;padding:5px 8px}
+
+  .toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,14px);z-index:60;
+    background:var(--panel);border:1px solid var(--purple);padding:10px 15px;font-size:11px;
+    color:var(--ink);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+
+  @media(max-width:700px){
+    .r,.colhd{grid-template-columns:1fr 74px 88px 22px}
+    .r .line,.r .stg,.colhd span:nth-child(4),.colhd span:nth-child(5){display:none}
+    .wrap{padding:12px 10px 30px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <p class="h1">Backfill <span>— qty &amp; price</span></p>
+      <div class="sub" id="sub">Loading…</div>
+    </div>
+    <div class="prog">
+      <div class="pbar"><i id="pFill" style="width:0%"></i></div>
+      <div class="pnum" id="pNum">—</div>
+    </div>
+  </div>
+
+  <div class="tools">
+    <button id="fMissing" class="on">Needs filling</button>
+    <button id="fAll">All jobs</button>
+    <span class="sp"></span>
+    <span class="hint">Enter saves and jumps to the next field</span>
+  </div>
+
+  <div id="list"><div class="msg">Loading jobs…</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var JOBS=[], filter='missing';
+  var el=function(i){return document.getElementById(i);};
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+  var STAGES=['Award','Plan','Machine','QC','Pack','Ship'];
+
+  var tt;
+  function toast(m){
+    var t=el('toast'); t.textContent=m; t.classList.add('on');
+    clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('on');},2200);
+  }
+
+  function needs(j){ return j.qty==null || j.price==null; }
+
+  function money(n){
+    return '$'+Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+
+  // ---- load ----------------------------------------------------------
+  fetch('/api/jobs',{credentials:'same-origin'})
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(j){
+      JOBS=Array.isArray(j)?j:[];
+      if(!JOBS.length){
+        el('list').innerHTML='<div class="msg">No jobs in the store yet. '+
+          'Run <b>POST /api/migrate</b> first.</div>';
+        el('sub').textContent='';
+        return;
+      }
+      render();
+    })
+    .catch(function(e){
+      el('list').innerHTML='<div class="msg">Couldn\u2019t reach <b>/api/jobs</b> \u2014 '+
+        esc(e.message)+'</div>';
+      el('sub').textContent='';
+    });
+
+  // ---- progress ------------------------------------------------------
+  function paintProgress(){
+    var done=JOBS.filter(function(j){return !needs(j);}).length;
+    var pct=JOBS.length?Math.round(done/JOBS.length*100):0;
+    var f=el('pFill');
+    f.style.width=pct+'%';
+    f.classList.toggle('done',pct===100);
+    el('pNum').textContent=done+' / '+JOBS.length;
+    var left=JOBS.length-done;
+    el('sub').textContent=left
+      ? left+' job'+(left===1?'':'s')+' still missing a quantity or a price'
+      : 'All jobs have a quantity and a price.';
+  }
+
+  // ---- save ----------------------------------------------------------
+  function save(job,dot){
+    dot.className='dot saving';
+    fetch('/api/jobs',{
+      method:'PATCH', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:job.id, qty:job.qty, price:job.price})
+    })
+    .then(function(r){
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      dot.className='dot saved';
+      paintProgress();
+      paintGroupTotals();
+    })
+    .catch(function(){
+      dot.className='dot err';
+      toast('Didn\u2019t save \u2014 value kept on screen, try again');
+    });
+  }
+
+  // ---- render --------------------------------------------------------
+  function visible(){
+    return (filter==='missing') ? JOBS.filter(needs) : JOBS.slice();
+  }
+
+  function render(){
+    paintProgress();
+    var rows=visible();
+    var host=el('list');
+
+    if(!rows.length){
+      host.innerHTML='<div class="msg">Nothing left to fill. '+
+        'Switch to <b>All jobs</b> to review or correct what\u2019s already in.</div>';
+      return;
+    }
+
+    // Group by PO — a PO covers several parts and you're reading one document,
+    // so filling goes PO by PO rather than part by part.
+    var order=[],map={};
+    rows.sort(function(a,b){
+      return String(a.po||'').localeCompare(String(b.po||''),undefined,{numeric:true});
+    });
+    rows.forEach(function(j){
+      var k=j.po||'\u2014';
+      if(!map[k]){map[k]=[];order.push(k);}
+      map[k].push(j);
+    });
+
+    host.innerHTML='';
+    order.forEach(function(po){
+      var g=document.createElement('div');
+      g.className='grp';
+      g.setAttribute('data-po',po);
+      var cust=map[po][0].customer||'';
+      g.innerHTML='<div class="glbl">PO '+esc(po)+
+        '<em>'+esc(cust)+'</em>'+
+        '<span class="fill"></span>'+
+        '<span class="bulk">'+
+          'all @ <input type="number" step="0.01" min="0" placeholder="price" data-bulk="'+esc(po)+'">'+
+          '<button data-bulkgo="'+esc(po)+'">Apply</button>'+
+        '</span>'+
+        '<span class="tot" data-tot="'+esc(po)+'"></span></div>'+
+        '<div class="colhd"><span>Part</span><span>Qty</span><span>Unit price</span>'+
+        '<span>Line</span><span>Stage</span><span></span></div>';
+
+      map[po].forEach(function(j){
+        g.appendChild(rowFor(j));
+      });
+      host.appendChild(g);
+    });
+
+    paintGroupTotals();
+    wireKeys();
+  }
+
+  function rowFor(j){
+    var r=document.createElement('div');
+    r.className='r'+(j.dadJob?' dad':'');
+    r.innerHTML=
+      '<div class="part">'+esc(j.part||'\u2014')+
+        '<small>'+esc(j.customer||'')+(j.dadJob?' \u00b7 DAD JOB':'')+
+        (j.invoice?(' \u00b7 INV '+esc(j.invoice)):'')+'</small></div>'+
+      '<input type="number" min="0" step="1" class="q'+(j.qty!=null?' has':'')+
+        '" value="'+(j.qty!=null?j.qty:'')+'" placeholder="qty">'+
+      '<input type="number" min="0" step="0.01" class="p'+(j.price!=null?' has':'')+
+        '" value="'+(j.price!=null?j.price:'')+'" placeholder="0.00">'+
+      '<div class="line"></div>'+
+      '<div class="stg">'+esc(STAGES[(j.stage||1)-1]||'')+'</div>'+
+      '<div class="dot"></div>';
+
+    var q=r.querySelector('.q'), p=r.querySelector('.p'),
+        line=r.querySelector('.line'), dot=r.querySelector('.dot');
+
+    function paintLine(){
+      var on=(j.qty!=null&&j.price!=null);
+      line.textContent=on?money(j.qty*j.price):'\u2014';
+      line.classList.toggle('on',on);
+    }
+    paintLine();
+
+    function commit(){
+      var qv=q.value.trim(), pv=p.value.trim();
+      var nq=qv===''?null:Number(qv);
+      var np=pv===''?null:Number(pv);
+      if(nq===j.qty&&np===j.price)return;      // nothing changed — don't write
+      j.qty=nq; j.price=np;
+      q.classList.toggle('has',nq!=null);
+      p.classList.toggle('has',np!=null);
+      paintLine();
+      save(j,dot);
+    }
+    q.addEventListener('change',commit);
+    p.addEventListener('change',commit);
+    r._commit=commit;
+    return r;
+  }
+
+  function paintGroupTotals(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tot]'),function(t){
+      var po=t.getAttribute('data-tot');
+      var inPo=JOBS.filter(function(j){return (j.po||'\u2014')===po;});
+      var complete=inPo.every(function(j){return j.qty!=null&&j.price!=null;});
+      if(!complete){ t.textContent=''; return; }
+      var sum=inPo.reduce(function(a,j){return a+j.qty*j.price;},0);
+      t.textContent=money(sum);
+    });
+  }
+
+  // ---- bulk price for a whole PO -------------------------------------
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-bulkgo]');
+    if(!b)return;
+    var po=b.getAttribute('data-bulkgo');
+    var inp=document.querySelector('[data-bulk="'+CSS.escape(po)+'"]');
+    var v=inp&&inp.value.trim();
+    if(!v){ inp&&inp.focus(); return; }
+    var grp=b.closest('.grp');
+    Array.prototype.forEach.call(grp.querySelectorAll('.r'),function(r){
+      var p=r.querySelector('.p');
+      p.value=v;
+      p.dispatchEvent(new Event('change'));
+    });
+    toast('Applied '+money(v)+' to PO '+po);
+  });
+
+  // ---- Enter walks to the next field ---------------------------------
+  function wireKeys(){
+    var inputs=Array.prototype.slice.call(document.querySelectorAll('.r input'));
+    inputs.forEach(function(inp,i){
+      inp.addEventListener('keydown',function(e){
+        if(e.key!=='Enter')return;
+        e.preventDefault();
+        inp.blur();                       // fires change -> save
+        var n=inputs[i+1];
+        if(n){ n.focus(); n.select(); }
+      });
+    });
+  }
+
+  // ---- filter --------------------------------------------------------
+  el('fMissing').onclick=function(){
+    filter='missing';
+    this.classList.add('on'); el('fAll').classList.remove('on');
+    render();
+  };
+  el('fAll').onclick=function(){
+    filter='all';
+    this.classList.add('on'); el('fMissing').classList.remove('on');
+    render();
+  };
+})();
+</script>
+</body>
+</html>
