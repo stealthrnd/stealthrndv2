@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Backfill — Stealth R&D</title>
+<style>
+  :root{
+    --bg:#0A0A0B; --panel:#232327; --panel-2:#2C2C31; --sunken:#060606;
+    --line:#35353B; --line-hot:#45454D;
+    --ink:#CCCCCC; --dim:#9A9AA2; --faint:#6E6E77; --white:#F2F2F4;
+    --purple:#9233E6; --purple-lift:#A855F7; --purple-tint:rgba(146,51,230,.13);
+    --pass:#4ADE80; --warn:#F0B429; --fail:#F87171;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --disp:'Helvetica Neue',Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  /* Standalone tool — it owns its own background rather than showing through
+     a host page. Lifted charcoal, not pure black, with a slight top glow so the
+     header edge reads. */
+  html,body{min-height:100%}
+  body{margin:0;color:var(--ink);font-family:var(--mono);font-size:13px;
+       background:#0A0A0B;
+       background-image:radial-gradient(120% 80% at 50% -12%,#1A1A1E 0%,#0A0A0B 58%);
+       background-attachment:fixed}
+
+  .wrap{padding:14px 14px 40px;max-width:1100px}
+
+  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+        flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px}
+  .h1{font-family:var(--disp);font-size:24px;font-weight:700;color:var(--white);margin:0}
+  .h1 span{color:var(--purple-lift)}
+  .sub{font-size:11px;color:var(--faint);margin-top:3px}
+
+  .prog{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .pbar{width:170px;height:6px;background:var(--sunken);border:1px solid var(--line);
+        position:relative;overflow:hidden}
+  .pbar i{position:absolute;inset:0 auto 0 0;background:var(--purple);
+          transition:width .35s cubic-bezier(.2,.8,.2,1)}
+  .pbar i.done{background:var(--pass)}
+  .pnum{font-family:var(--disp);font-size:15px;font-weight:700;color:var(--white);
+        white-space:nowrap}
+
+  .grp{margin-top:22px;transition:opacity .3s ease,transform .34s cubic-bezier(.4,0,.6,1),
+       max-height .38s ease,margin .38s ease}
+  .grp.clearing{opacity:0;transform:translateX(38px);max-height:0;margin-top:0;
+       overflow:hidden;pointer-events:none}
+  .glbl{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-size:13px;
+    font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--white);
+    border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:2px;flex-wrap:wrap}
+  .glbl em{font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+    color:var(--faint);text-transform:none}
+  .glbl .fill{flex:1}
+  .glbl .tot{font-family:var(--mono);font-size:12px;color:var(--pass);letter-spacing:.04em;
+    text-transform:none}
+
+  .bulk{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--faint);
+    text-transform:none;letter-spacing:0}
+  .bulk input{width:78px;background:var(--sunken);border:1px solid var(--line);color:var(--white);
+    font-family:var(--mono);font-size:12px;padding:5px 7px;text-align:right}
+  .bulk button{font-family:var(--mono);font-size:9px;letter-spacing:.06em;padding:5px 8px;
+    background:none;border:1px solid var(--line);color:var(--faint);cursor:pointer;
+    text-transform:uppercase}
+  .bulk button:hover{color:var(--dim);border-color:var(--dim)}
+
+  /* THE WRITE BUTTON. This is the only thing in the tool that touches the
+     network. Nothing autosaves — typing only ever updates what's on screen. */
+  .writebtn{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;padding:7px 14px;cursor:pointer;
+    background:var(--purple-tint);border:1px solid var(--purple);color:var(--purple-lift)}
+  .writebtn:hover{background:rgba(146,51,230,.22)}
+  .writebtn:disabled{opacity:.55;cursor:default}
+  .writebtn.err{background:rgba(248,113,113,.13);border-color:var(--fail);color:var(--fail)}
+  .writebtn.err:hover{background:rgba(248,113,113,.22)}
+
+  /* one row per job. Grid so the columns line up across every group. */
+  .r{display:grid;grid-template-columns:1fr 96px 112px 104px 86px;
+     gap:9px;align-items:center;padding:7px 2px;border-bottom:1px solid rgba(53,53,59,.5)}
+  .r:hover{background:rgba(255,255,255,.02)}
+  .r .part{font-family:var(--disp);font-size:15px;font-weight:700;color:var(--white);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .r .part small{display:block;font-family:var(--mono);font-size:9px;font-weight:400;
+    color:var(--faint);letter-spacing:.05em;margin-top:1px}
+  .r input{width:100%;background:#050506;border:1px solid var(--line);color:var(--white);
+    font-family:var(--mono);font-size:14px;padding:7px 8px;text-align:right}
+  .r input:focus{outline:none;border-color:var(--purple);background:#0E0E11}
+  .r input.has{border-color:rgba(74,222,128,.4)}
+  .r .line{font-family:var(--disp);font-size:14px;font-weight:700;color:var(--dim);text-align:right}
+  .r .line.on{color:var(--pass)}
+  .r .stg{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+    text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .r.dad .part small{color:var(--warn)}
+
+  .colhd{display:grid;grid-template-columns:1fr 96px 112px 104px 86px;gap:9px;
+    padding:0 2px 5px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint)}
+  .colhd span:nth-child(n+2){text-align:right}
+
+  .msg{padding:26px 18px;border:1px solid var(--line);background:var(--panel);
+    font-size:12px;color:var(--faint);line-height:1.6}
+  .msg b{color:var(--dim);font-weight:500}
+
+  .toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,14px);z-index:60;
+    background:var(--panel);border:1px solid var(--purple);padding:10px 15px;font-size:11px;
+    color:var(--ink);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+    max-width:calc(100vw - 32px);text-align:center}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+  .toast.err{border-color:var(--fail)}
+
+  @media(max-width:700px){
+    .r,.colhd{grid-template-columns:1fr 74px 88px}
+    .r .line,.r .stg,.colhd span:nth-child(4),.colhd span:nth-child(5){display:none}
+    .wrap{padding:12px 10px 30px}
+    .glbl{gap:7px 9px}
+    .bulk{order:5;width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <p class="h1">Backfill <span>— qty &amp; price</span></p>
+      <div class="sub" id="sub">Loading…</div>
+    </div>
+    <div class="prog">
+      <div class="pbar"><i id="pFill" style="width:0%"></i></div>
+      <div class="pnum" id="pNum">—</div>
+    </div>
+  </div>
+
+  <div id="list"><div class="msg">Loading jobs…</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var JOBS=[], TOTAL=0, INVOICED=0;
+  var el=function(i){return document.getElementById(i);};
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+  var STAGES=['Award','Plan','Machine','QC','Pack','Ship'];
+
+  var tt;
+  function toast(m,isErr){
+    var t=el('toast'); t.textContent=m; t.classList.toggle('err',!!isErr);
+    t.classList.add('on');
+    clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('on');},2600);
+  }
+
+  function money(n){
+    return '$'+Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+
+  // ---- load ----------------------------------------------------------
+  // Scope: un-invoiced jobs that are still missing a qty or a price. There is
+  // only ever this one list now — a PO leaves it by being written, not by a
+  // filter toggle. Anything already invoiced or already fully priced has
+  // nothing left to do here.
+  fetch('/api/jobs',{credentials:'same-origin'})
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(all){
+      all=Array.isArray(all)?all:[];
+      if(!all.length){
+        el('list').innerHTML='<div class="msg">No jobs in the store yet. '+
+          'Run <b>POST /api/migrate</b> first.</div>';
+        el('sub').textContent='';
+        return;
+      }
+      var openJobs=all.filter(function(x){return !x.invoice;});
+      INVOICED=all.length-openJobs.length;
+      JOBS=openJobs.filter(function(x){return x.qty==null||x.price==null;});
+      TOTAL=JOBS.length;
+      if(!JOBS.length){
+        el('sub').textContent=INVOICED
+          ? 'Everything is filled or already invoiced.' : 'Nothing to backfill.';
+        el('list').innerHTML='<div class="msg">Nothing left to fill.</div>';
+        return;
+      }
+      render();
+    })
+    .catch(function(e){
+      el('list').innerHTML='<div class="msg">Couldn\u2019t reach <b>/api/jobs</b> \u2014 '+
+        esc(e.message)+'</div>';
+      el('sub').textContent='';
+    });
+
+  function paintProgress(){
+    var done=TOTAL-JOBS.length;
+    var pct=TOTAL?Math.round(done/TOTAL*100):0;
+    var f=el('pFill');
+    f.style.width=pct+'%';
+    f.classList.toggle('done',pct===100);
+    el('pNum').textContent=done+' / '+TOTAL;
+    var left=JOBS.length;
+    el('sub').textContent=(left
+      ? left+' job'+(left===1?'':'s')+' across '+poCount()+' PO'+(poCount()===1?'':'s')+' left to write'
+      : 'All written.')+
+      (INVOICED?('  \u00b7  '+INVOICED+' already invoiced, not shown'):'');
+  }
+  function poCount(){
+    var seen={}; JOBS.forEach(function(j){seen[j.po||'\u2014']=1;});
+    return Object.keys(seen).length;
+  }
+
+  // ---- the write queue -------------------------------------------------
+  // Nothing writes until you press a PO's WRITE button. When you do, every job
+  // in that PO is sent — one PATCH at a time, never overlapping. Serializing
+  // matters: api/jobs.js reads the whole jobs blob, edits one job, writes the
+  // whole blob back, so two writes in flight at once can race and one silently
+  // clobbers the other. One at a time removes that risk entirely.
+  var queue=[], pumping=false;
+  function enqueue(item,cb){
+    queue.push({item:item,cb:cb});
+    pump();
+  }
+  function pump(){
+    if(pumping)return;
+    var entry=queue.shift();
+    if(!entry)return;
+    pumping=true;
+    fetch('/api/jobs',{
+      method:'PATCH', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(entry.item)
+    })
+    .then(function(r){ entry.cb(r.ok); })
+    .catch(function(){ entry.cb(false); })
+    .then(function(){ pumping=false; pump(); });
+  }
+
+  // Write everything currently on screen for one PO, confirm the server agrees,
+  // then remove that PO. A partial or unconfirmed result leaves it on screen
+  // with a red retry button — it never disappears on a guess.
+  function writePO(po,btn){
+    var inPo=JOBS.filter(function(j){return (j.po||'\u2014')===po;});
+    if(!inPo.length)return;
+    btn.disabled=true; btn.textContent='Writing\u2026'; btn.classList.remove('err');
+
+    var remaining=inPo.length, allOk=true;
+    inPo.forEach(function(j){
+      enqueue({id:j.id,qty:j.qty,price:j.price},function(ok){
+        if(!ok)allOk=false;
+        if(--remaining===0)afterWrite();
+      });
+    });
+
+    function afterWrite(){
+      if(!allOk){ fail('Didn\u2019t save \u2014 try again'); return; }
+      btn.textContent='Checking\u2026';
+      fetch('/api/jobs',{credentials:'same-origin'})
+        .then(function(r){ if(!r.ok)throw new Error(); return r.json(); })
+        .then(function(server){
+          var byId={}; server.forEach(function(x){byId[x.id]=x;});
+          var match=inPo.every(function(j){
+            var live=byId[j.id];
+            return live && live.qty===j.qty && live.price===j.price;
+          });
+          if(!match){ fail('Saved but didn\u2019t verify \u2014 try again to be safe'); return; }
+
+          JOBS=JOBS.filter(function(j){return (j.po||'\u2014')!==po;});
+          paintProgress();
+          removeGroup(po);
+          toast('PO '+po+' written');
+        })
+        .catch(function(){ fail('Couldn\u2019t confirm with the server \u2014 check your connection'); });
+    }
+    function fail(msg){
+      btn.disabled=false; btn.textContent='Retry write'; btn.classList.add('err');
+      toast('PO '+po+': '+msg, true);
+    }
+  }
+
+  function removeGroup(po){
+    var g=document.querySelector('.grp[data-po="'+CSS.escape(po)+'"]');
+    if(!g)return;
+    g.style.maxHeight=g.scrollHeight+'px';
+    requestAnimationFrame(function(){
+      g.classList.add('clearing');
+      setTimeout(function(){
+        g.remove();
+        if(!document.querySelectorAll('.grp').length){
+          el('list').innerHTML='<div class="msg">All written. Nothing left to backfill.</div>';
+        }
+      },420);
+    });
+  }
+
+  // ---- render ----------------------------------------------------------
+  function render(){
+    paintProgress();
+    var rows=JOBS.slice().sort(function(a,b){
+      return String(a.po||'').localeCompare(String(b.po||''),undefined,{numeric:true});
+    });
+
+    var order=[],map={};
+    rows.forEach(function(j){
+      var k=j.po||'\u2014';
+      if(!map[k]){map[k]=[];order.push(k);}
+      map[k].push(j);
+    });
+
+    var host=el('list');
+    host.innerHTML='';
+    order.forEach(function(po){
+      var g=document.createElement('div');
+      g.className='grp';
+      g.setAttribute('data-po',po);
+      var cust=map[po][0].customer||'';
+      g.innerHTML='<div class="glbl">PO '+esc(po)+
+        '<em>'+esc(cust)+'</em>'+
+        '<span class="fill"></span>'+
+        '<span class="bulk">'+
+          'all @ <input type="number" step="0.01" min="0" placeholder="price" data-bulk="'+esc(po)+'">'+
+          '<button data-bulkgo="'+esc(po)+'">Fill</button>'+
+        '</span>'+
+        '<span class="tot" data-tot="'+esc(po)+'"></span>'+
+        '<button class="writebtn" data-write="'+esc(po)+'">Write</button>'+
+        '</div>'+
+        '<div class="colhd"><span>Part</span><span>Qty</span><span>Unit price</span>'+
+        '<span>Line</span><span>Stage</span></div>';
+
+      map[po].forEach(function(j){ g.appendChild(rowFor(j)); });
+      host.appendChild(g);
+    });
+
+    paintGroupTotals();
+    wireKeys();
+  }
+
+  // One job row. Typing only updates the in-memory value and the line total —
+  // no network call happens here. The PO's WRITE button is the only thing
+  // that sends anything.
+  function rowFor(j){
+    var r=document.createElement('div');
+    r.className='r'+(j.dadJob?' dad':'');
+    r.innerHTML=
+      '<div class="part">'+esc(j.part||'\u2014')+
+        '<small>'+esc(j.customer||'')+(j.dadJob?' \u00b7 DAD JOB':'')+'</small></div>'+
+      '<input type="number" min="0" step="1" class="q'+(j.qty!=null?' has':'')+
+        '" value="'+(j.qty!=null?j.qty:'')+'" placeholder="qty">'+
+      '<input type="number" min="0" step="0.01" class="p'+(j.price!=null?' has':'')+
+        '" value="'+(j.price!=null?j.price:'')+'" placeholder="0.00">'+
+      '<div class="line"></div>'+
+      '<div class="stg">'+esc(STAGES[(j.stage||1)-1]||'')+'</div>';
+
+    var q=r.querySelector('.q'), p=r.querySelector('.p'), line=r.querySelector('.line');
+
+    function paintLine(){
+      var on=(j.qty!=null&&j.price!=null);
+      line.textContent=on?money(j.qty*j.price):'\u2014';
+      line.classList.toggle('on',on);
+    }
+    paintLine();
+
+    function apply(){
+      var qv=q.value.trim(), pv=p.value.trim();
+      j.qty=qv===''?null:Number(qv);
+      j.price=pv===''?null:Number(pv);
+      q.classList.toggle('has',j.qty!=null);
+      p.classList.toggle('has',j.price!=null);
+      paintLine();
+      paintGroupTotals();
+    }
+    q.addEventListener('change',apply);
+    p.addEventListener('change',apply);
+    q.addEventListener('input',apply);   // live line-total feedback as you type
+    p.addEventListener('input',apply);
+    return r;
+  }
+
+  function paintGroupTotals(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tot]'),function(t){
+      var po=t.getAttribute('data-tot');
+      var inPo=JOBS.filter(function(j){return (j.po||'\u2014')===po;});
+      var complete=inPo.length&&inPo.every(function(j){return j.qty!=null&&j.price!=null;});
+      t.textContent=complete?money(inPo.reduce(function(a,j){return a+j.qty*j.price;},0)):'';
+    });
+  }
+
+  // ---- fill a whole PO at one price (still doesn't save) ----------------
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-bulkgo]');
+    if(b){
+      var po=b.getAttribute('data-bulkgo');
+      var inp=document.querySelector('[data-bulk="'+CSS.escape(po)+'"]');
+      var v=inp&&inp.value.trim();
+      if(!v){ inp&&inp.focus(); return; }
+      var grp=b.closest('.grp');
+      Array.prototype.forEach.call(grp.querySelectorAll('.r .p'),function(p){
+        p.value=v;
+        p.dispatchEvent(new Event('change'));
+      });
+      return;
+    }
+    var w=e.target.closest('[data-write]');
+    if(w){ writePO(w.getAttribute('data-write'),w); }
+  });
+
+  // ---- Enter walks to the next field -------------------------------------
+  function wireKeys(){
+    var inputs=Array.prototype.slice.call(document.querySelectorAll('.r input'));
+    inputs.forEach(function(inp,i){
+      inp.addEventListener('keydown',function(e){
+        if(e.key!=='Enter')return;
+        e.preventDefault();
+        var n=inputs[i+1];
+        if(n){ n.focus(); n.select(); } else { inp.blur(); }
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>
